@@ -73,6 +73,21 @@ public static class Ps5Mode
 
     public sealed record Counter(string Id, string Quest, string Objective, int Value, string State);
 
+    /// <summary>Palier de la Chasse au trésor atteint : Kind = "count" (coffres) ou "rarity" (coffres rares).</summary>
+    public sealed record Milestone(string Kind, int Value, DateTime At);
+
+    /// <summary>Ce qu'on reconstruit de la saison à partir des dates des paliers.</summary>
+    public sealed class Season
+    {
+        public List<Milestone> Count { get; } = new();
+        public List<Milestone> Rare { get; } = new();
+        /// <summary>Coffres estimés par jour (interpolation entre les paliers).</summary>
+        public Dictionary<DateTime, double> PerDay { get; } = new();
+        /// <summary>Estimation au-delà du plafond (via le rythme des coffres rares), et sa date.</summary>
+        public int? Estimate { get; set; }
+        public DateTime? EstimateAt { get; set; }
+    }
+
     private sealed class EpicException(HttpStatusCode status, string code, string message) : Exception($"{(int)status} {code} {message}".Trim())
     {
         public HttpStatusCode Status { get; } = status;
@@ -88,7 +103,7 @@ public static class Ps5Mode
     private static void WriteReport()
     {
         var session = _tracked != null && _sessionStart != null ? _tracked.Value - _sessionStart.Value : 0;
-        ReportWriter.WritePs5(ReportPath, _player, _data, _counters, _tracked, Capped, session, _error);
+        ReportWriter.WritePs5(ReportPath, _player, _data, _counters, _tracked, Capped, session, _error, _season);
     }
 
     private static string? _token, _accountId, _player;
@@ -98,11 +113,38 @@ public static class Ps5Mode
     private static Ps5Data _data = new();
     private static List<Counter> _counters = new();
     private static Counter? _tracked;
+    private static Season _season = new();
     private static int? _sessionStart;
     private static DateTime? _lastSync;
     private static string? _error;
     private static DateTime _nextPoll = DateTime.MinValue;
     private static readonly List<(DateTime At, string Text, ConsoleColor Color)> Log = new();
+
+    /// <summary>--ps5-quests : écrit les attributs bruts des quêtes Chasse au trésor (dates de palier) dans ps5\\quests.txt.</summary>
+    public static int DumpQuests(string dataDir)
+    {
+        _folder = Path.Combine(dataDir, "ps5");
+        Directory.CreateDirectory(_folder);
+        ImportFromNodeTool();
+        if (!EnsureSession()) return 1;
+        var profile = QueryProfile();
+        var sb = new StringBuilder();
+        if (profile["items"] is JsonObject items)
+        {
+            foreach (var (_, item) in items)
+            {
+                var tid = (string?)item?["templateId"] ?? "";
+                if (tid.StartsWith("quest:", StringComparison.OrdinalIgnoreCase) && ChestRe.IsMatch(tid))
+                {
+                    var attrs = item!["attributes"]!.DeepClone().AsObject();
+                    attrs.Remove("challenge_linked_quest_parent");
+                    sb.AppendLine(tid + "  " + attrs.ToJsonString());
+                }
+            }
+        }
+        File.WriteAllText(Path.Combine(_folder, "quests.txt"), sb.ToString());
+        return 0;
+    }
 
     public static int Run(string dataDir)
     {
@@ -340,6 +382,92 @@ public static class Ps5Mode
         return $"{L.T("Chasse au trésor", "Treasure Hunt", "Caza del tesoro")} · {what} · {L.T("palier", "stage", "etapa")} {m.Groups[2].Value}";
     }
 
+    private static readonly Regex TierRe = new(@"treasurehunt_(count|rarity)_0*(\d+)$", RegexOptions.IgnoreCase);
+
+    /// <summary>
+    /// Dates des paliers : le palier N est atteint quand le palier N+1 est créé (creation_time), sinon à sa
+    /// validation (last_state_change_time). Le palier 1 créé = début de la quête (0 coffre).
+    /// </summary>
+    public static Season BuildSeason(JsonNode profile)
+    {
+        var season = new Season();
+        var tiers = new List<(string Kind, int Tier, int Value, string State, DateTime Created, DateTime? Changed)>();
+        if (profile["items"] is JsonObject items)
+        {
+            foreach (var (_, item) in items)
+            {
+                var tid = (string?)item?["templateId"] ?? "";
+                var m = TierRe.Match(tid);
+                if (!m.Success || item?["attributes"] is not JsonObject a) continue;
+                var value = a.Where(kv => kv.Key.StartsWith("completion_")).Select(kv => kv.Value is JsonValue v && v.TryGetValue<int>(out var n) ? n : 0).DefaultIfEmpty(0).Max();
+                if (!DateTime.TryParse((string?)a["creation_time"], null, System.Globalization.DateTimeStyles.AdjustToUniversal, out var created)) continue;
+                DateTime? changed = DateTime.TryParse((string?)a["last_state_change_time"], null, System.Globalization.DateTimeStyles.AdjustToUniversal, out var c) ? c : null;
+                tiers.Add((m.Groups[1].Value.ToLowerInvariant(), int.Parse(m.Groups[2].Value), value, a["quest_state"]?.ToString() ?? "", created, changed));
+            }
+        }
+        foreach (var kind in new[] { "count", "rarity" })
+        {
+            var list = tiers.Where(t => t.Kind == kind).OrderBy(t => t.Tier).ToList();
+            if (list.Count == 0) continue;
+            var target = kind == "count" ? season.Count : season.Rare;
+            target.Add(new Milestone(kind, 0, list[0].Created));
+            for (var i = 0; i < list.Count; i++)
+            {
+                var t = list[i];
+                if (!t.State.Equals("Claimed", StringComparison.OrdinalIgnoreCase)) continue;
+                var at = i + 1 < list.Count ? list[i + 1].Created : t.Changed ?? t.Created;
+                target.Add(new Milestone(kind, t.Value, at));
+            }
+        }
+
+        // Coffres par jour : répartition linéaire entre deux paliers.
+        for (var i = 1; i < season.Count.Count; i++)
+        {
+            var (a, b) = (season.Count[i - 1], season.Count[i]);
+            var span = (b.At - a.At).TotalSeconds;
+            if (span <= 0) continue;
+            var from = a.At.ToLocalTime();
+            var to = b.At.ToLocalTime();
+            for (var day = from.Date; day <= to.Date; day = day.AddDays(1))
+            {
+                var s0 = day < from ? from : day;
+                var s1 = day.AddDays(1) > to ? to : day.AddDays(1);
+                var part = (s1 - s0).TotalSeconds / span * (b.Value - a.Value);
+                season.PerDay[day] = season.PerDay.GetValueOrDefault(day) + part;
+            }
+        }
+
+        // Estimation au-delà de 1 000 : nombre de coffres par coffre rare au moment des 1 000, appliqué au dernier palier rare.
+        var thousand = season.Count.LastOrDefault(m => m.Value >= Cap);
+        var lastRare = season.Rare.LastOrDefault();
+        if (thousand != null && lastRare != null && lastRare.Value > 0 && lastRare.At > thousand.At)
+        {
+            var rareAtThousand = Interpolate(season.Rare, thousand.At);
+            if (rareAtThousand > 0)
+            {
+                var est = Cap * lastRare.Value / rareAtThousand;
+                if (est > Cap)
+                {
+                    season.Estimate = (int)(Math.Round(est / 10) * 10);
+                    season.EstimateAt = lastRare.At;
+                }
+            }
+        }
+        return season;
+    }
+
+    private static double Interpolate(List<Milestone> points, DateTime at)
+    {
+        for (var i = 1; i < points.Count; i++)
+        {
+            if (points[i].At < at) continue;
+            var (a, b) = (points[i - 1], points[i]);
+            var span = (b.At - a.At).TotalSeconds;
+            return span <= 0 ? b.Value : a.Value + (b.Value - a.Value) * (at - a.At).TotalSeconds / span;
+        }
+        return points.Count > 0 ? points[^1].Value : 0;
+    }
+
     private static bool Capped => _tracked != null && _tracked.Value >= Cap && PreferRe.IsMatch(_tracked.Id);
 
     /// <summary>Une vérification. Retourne false si une nouvelle connexion est nécessaire.</summary>
@@ -348,7 +476,9 @@ public static class Ps5Mode
         try
         {
             if (!EnsureSession()) return false;
-            _counters = FindCounters(QueryProfile());
+            var profile = QueryProfile();
+            _counters = FindCounters(profile);
+            _season = BuildSeason(profile);
             var c = _counters.FirstOrDefault(x => x.Id == _data.TrackId);
             if (c != null && !_data.Manual && c.Value >= Cap)
             {
@@ -566,7 +696,19 @@ public static class Ps5Mode
             new Seg(L.T("Aujourd'hui ", "Today ", "Hoy "), mut), new Seg($"+{today}".PadRight(8), ConsoleColor.White),
             new Seg(L.T("Avant le suivi ", "Before tracking ", "Antes del seguimiento "), mut),
             new Seg(before == null ? "–" : L.N(before.Value) + (Capped ? "+" : ""), ConsoleColor.White),
-            new Seg(_data.Baseline == null ? "" : $"  ({_data.Baseline.At.ToLocalTime():dd/MM})", mut));
+            new Seg(_data.Baseline == null ? "" : $"  ({_data.Baseline.At.ToLocalTime():dd'/'MM})", mut));
+        if (_season.Count.Count > 1)
+        {
+            f.Blank();
+            f.Add("  " + L.T("TA SAISON", "YOUR SEASON", "TU TEMPORADA"), ConsoleColor.Cyan);
+            f.Add("    " + string.Join("   ", _season.Count.Skip(1).Select(m => $"{L.N(m.Value)} ({m.At.ToLocalTime():dd'/'MM HH:mm})")), ConsoleColor.White);
+            if (_season.Estimate is int est)
+            {
+                f.Add(new Seg("    ≈ " + L.N(est), gold), new Seg(L.T($"  coffres estimés au {_season.EstimateAt!.Value.ToLocalTime():dd'/'MM} (d'après ton rythme de coffres rares)",
+                    $"  chests estimated on {_season.EstimateAt!.Value.ToLocalTime():dd'/'MM} (from your rare chest pace)",
+                    $"  cofres estimados el {_season.EstimateAt!.Value.ToLocalTime():dd'/'MM} (según tu ritmo de cofres raros)"), mut));
+            }
+        }
         if (Capped)
         {
             f.Blank();
@@ -594,7 +736,7 @@ public static class Ps5Mode
             foreach (var (day, n) in days)
             {
                 var bar = new string('█', Math.Max(1, (int)Math.Round(30.0 * n / max)));
-                f.Add(new Seg($"    {day:dd/MM}  ", mut), new Seg(bar, gold), new Seg($" {n}", ConsoleColor.White));
+                f.Add(new Seg($"    {day:dd'/'MM}  ", mut), new Seg(bar, gold), new Seg($" {n}", ConsoleColor.White));
             }
         }
 
@@ -605,7 +747,7 @@ public static class Ps5Mode
         if (recent.Count == 0) f.Add("    " + L.T("Rien pour l'instant.", "Nothing yet.", "Nada por ahora."), mut);
         foreach (var h in recent)
         {
-            f.Add(new Seg($"    {h.At.ToLocalTime():dd/MM HH:mm}  ", mut), new Seg($"+{h.Delta}", ConsoleColor.Green), new Seg($"  →  {L.N(h.Total)}", ConsoleColor.White));
+            f.Add(new Seg($"    {h.At.ToLocalTime():dd'/'MM HH:mm}  ", mut), new Seg($"+{h.Delta}", ConsoleColor.Green), new Seg($"  →  {L.N(h.Total)}", ConsoleColor.White));
         }
 
         // Compteurs Epic

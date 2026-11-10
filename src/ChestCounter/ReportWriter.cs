@@ -412,11 +412,11 @@ public static class ReportWriter
 
     /// <summary>Rapport du mode PS5 : même style « journal de bord », alimenté par le compteur du compte Epic.</summary>
     public static void WritePs5(string path, string? player, Ps5Mode.Ps5Data data, IReadOnlyList<Ps5Mode.Counter> counters,
-        Ps5Mode.Counter? tracked, bool capped, int session, string? error)
+        Ps5Mode.Counter? tracked, bool capped, int session, string? error, Ps5Mode.Season season)
     {
         try
         {
-            WriteAtomic(path, Ps5Report(player, data, counters, tracked, capped, session, error));
+            WriteAtomic(path, Ps5Report(player, data, counters, tracked, capped, session, error, season));
         }
         catch (Exception ex)
         {
@@ -425,7 +425,7 @@ public static class ReportWriter
     }
 
     public static string Ps5Report(string? player, Ps5Mode.Ps5Data data, IReadOnlyList<Ps5Mode.Counter> counters,
-        Ps5Mode.Counter? tracked, bool capped, int session, string? error)
+        Ps5Mode.Counter? tracked, bool capped, int session, string? error, Ps5Mode.Season season)
     {
         string N(int n) => n.ToString("N0", Fr);
         string Tile(string value, string label, string? sub = null) =>
@@ -461,8 +461,10 @@ public static class ReportWriter
               <div class="tile hero"><div class="k">{L.T("Coffres cette saison", "Chests this season", "Cofres esta temporada")}</div><div class="v num">{(total == null ? "–" : N(total.Value) + plus)}</div><div class="l">{L.T($"d'après ton compte Epic · +{N(session)} depuis le lancement", $"from your Epic account · +{N(session)} since the tool started", $"según tu cuenta Epic · +{N(session)} desde que se abrió")}</div></div>
               {Tile("+" + N(today), L.T("aujourd'hui", "today", "hoy"))}
               {Tile("+" + N(session), L.T("cette session", "this session", "esta sesión"))}
-              {Tile(before == null ? "–" : N(before.Value) + plus, L.T("avant le suivi", "before tracking", "antes del seguimiento"), data.Baseline == null ? null : data.Baseline.At.ToLocalTime().ToString("dd/MM/yyyy", Fr))}
-              {Tile("+" + N(since), L.T("depuis le suivi", "since tracking", "desde el seguimiento"))}
+              {Tile(before == null ? "–" : N(before.Value) + plus, L.T("avant le suivi", "before tracking", "antes del seguimiento"), data.Baseline == null ? null : data.Baseline.At.ToLocalTime().ToString("dd'/'MM'/'yyyy", Fr))}
+              {(season.Estimate is int est
+                  ? Tile("≈ " + N(est), L.T("coffres estimés", "estimated chests", "cofres estimados"), L.T($"au {season.EstimateAt!.Value.ToLocalTime():dd'/'MM}, d'après tes coffres rares", $"on {season.EstimateAt!.Value.ToLocalTime():d MMM}, from your rare chests", $"el {season.EstimateAt!.Value.ToLocalTime():dd'/'MM}, según tus cofres raros"))
+                  : Tile("+" + N(since), L.T("depuis le suivi", "since tracking", "desde el seguimiento")))}
             </section>
             """);
         if (capped)
@@ -475,20 +477,49 @@ public static class ReportWriter
 
         // 30 derniers jours, une barre par jour (même graphique que le mode PC).
         var days = Enumerable.Range(0, 30).Select(i => todayDate.AddDays(i - 29)).ToList();
-        var perDay = days.Select(d => history.Where(h => h.At.ToLocalTime().Date == d).Sum(h => h.Delta)).ToList();
+        var trackedFrom = data.Baseline?.At.ToLocalTime().Date ?? DateTime.MaxValue;
+        var estimated = days.Select(d => d < trackedFrom && season.PerDay.TryGetValue(d, out var v) ? (int)Math.Round(v) : 0).ToList();
+        var perDay = days.Select((d, i) => history.Where(h => h.At.ToLocalTime().Date == d).Sum(h => h.Delta) + estimated[i]).ToList();
         var max = Math.Max(1, perDay.Max());
         sb.Append($"<section><h2 class=\"pirate\">{L.T("Coffres par jour", "Chests per day", "Cofres por día")}</h2><div class=\"card chart\"><div class=\"bars\">");
         for (var i = 0; i < days.Count; i++)
         {
             var v = perDay[i];
             var h = (int)Math.Round(100.0 * v / max);
-            var tip = $"{days[i].ToString(L.T("ddd dd/MM", "ddd d MMM", "ddd dd/MM"), Fr)}{L.T(" : ", ": ", ": ")}{L.Count(v, "coffre", "chest", "cofre")}";
+            var tip = $"{days[i].ToString(L.T("ddd dd/MM", "ddd d MMM", "ddd dd/MM"), Fr)}{L.T(" : ", ": ", ": ")}{(estimated[i] > 0 ? "≈ " : "")}{L.Count(v, "coffre", "chest", "cofre")}";
             var cls = v == 0 ? " zero" : v == max ? " top" : "";
-            sb.Append($"<div class=\"col\" aria-label=\"{H(tip)}\"><span class=\"tip\" style=\"bottom:calc({Math.Max(h, 3)}% + 6px)\">{H(tip)}</span><div class=\"bar{cls}\" style=\"height:{h}%\"></div></div>");
+            sb.Append($"<div class=\"col\" aria-label=\"{H(tip)}\"><span class=\"tip\" style=\"bottom:calc({Math.Max(h, 3)}% + 6px)\">{H(tip)}</span><div class=\"bar{cls}\" style=\"height:{h}%{(estimated[i] > 0 ? ";opacity:.55" : "")}\"></div></div>");
         }
         sb.Append($"</div><div class=\"axis\"><span>{days[0].ToString(L.T("dd/MM", "d MMM", "dd/MM"), Fr)}</span>"
+            + (estimated.Any(e => e > 0) ? $"<span>{L.T("barres pâles = reconstruit d'après les paliers Epic, plafonné à 1 000", "faded bars = rebuilt from Epic stages, capped at 1,000", "barras claras = reconstruido con las etapas de Epic, tope de 1000")}</span>" : "")
             + (perDay.Max() == 0 ? $"<span>{L.T("les jours se remplissent au fil des parties", "days fill in as you play", "los días se llenan al jugar")}</span>" : "")
             + $"<span>{L.T("aujourd'hui", "today", "hoy")}</span></div></div></section>");
+
+        if (season.Count.Count > 1 || season.Rare.Count > 1)
+        {
+            sb.Append($"<section><h2 class=\"pirate\">{L.T("Ta saison, palier par palier", "Your season, stage by stage", "Tu temporada, etapa por etapa")}</h2><div class=\"card\"><table><tr><th>{L.T("Palier", "Stage", "Etapa")}</th><th>{L.T("Atteint le", "Reached on", "Alcanzada el")}</th><th style=\"text-align:right\">{L.T("Durée", "Time", "Duración")}</th></tr>");
+            void Rows(List<Ps5Mode.Milestone> list, string what)
+            {
+                for (var i = 1; i < list.Count; i++)
+                {
+                    var dt = list[i].At - list[i - 1].At;
+                    var dur = dt.TotalHours >= 24 ? $"{(int)dt.TotalDays} j {dt.Hours} h" : $"{(int)dt.TotalHours} h {dt.Minutes:00}";
+                    sb.Append($"<tr><td><b>{N(list[i].Value)}</b> {what}</td><td class=\"nw num\">{L.DateTimeShort(list[i].At.ToLocalTime())}</td><td class=\"n num items\">{dur}</td></tr>");
+                }
+            }
+            Rows(season.Count, L.T("coffres", "chests", "cofres"));
+            Rows(season.Rare, L.T("coffres rares", "rare chests", "cofres raros"));
+            sb.Append("</table>");
+            if (season.Count.Count > 0)
+            {
+                sb.Append($"<div class=\"items\" style=\"padding:10px 0 8px\">{L.T($"Début de la Chasse au trésor : {L.DateTimeShort(season.Count[0].At.ToLocalTime())}.", $"Treasure Hunt started: {L.DateTimeShort(season.Count[0].At.ToLocalTime())}.", $"Inicio de la Caza del tesoro: {L.DateTimeShort(season.Count[0].At.ToLocalTime())}.")}"
+                    + (season.Estimate is int e2 ? " " + L.T($"Estimation au-delà de 1 000 : à 1 000 coffres tu avais environ 1 coffre rare pour {(double)e2 / Math.Max(1, season.Rare[^1].Value):0} coffres ; tu as atteint {season.Rare[^1].Value} coffres rares le {season.EstimateAt!.Value.ToLocalTime():dd'/'MM}, soit ≈ {N(e2)} coffres. C'est une estimation.",
+                        $"Estimate beyond 1,000: at 1,000 chests you had about 1 rare chest per {(double)e2 / Math.Max(1, season.Rare[^1].Value):0} chests; you reached {season.Rare[^1].Value} rare chests on {season.EstimateAt!.Value.ToLocalTime():d MMM}, so ≈ {N(e2)} chests. This is an estimate.",
+                        $"Estimación más allá de 1000: con 1000 cofres tenías 1 cofre raro cada {(double)e2 / Math.Max(1, season.Rare[^1].Value):0} cofres; llegaste a {season.Rare[^1].Value} cofres raros el {season.EstimateAt!.Value.ToLocalTime():dd'/'MM}, o sea ≈ {N(e2)} cofres. Es una estimación.") : "")
+                    + "</div>");
+            }
+            sb.Append("</div></section>");
+        }
 
         // Compteurs Epic | derniers gains
         sb.Append($"<div class=\"two\"><section><h2 class=\"pirate\">{L.T("Compteurs de ton compte Epic", "Your Epic account counters", "Contadores de tu cuenta Epic")}</h2><div class=\"card\"><table>");
