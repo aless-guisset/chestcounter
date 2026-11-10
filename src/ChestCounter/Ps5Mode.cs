@@ -98,6 +98,8 @@ public static class Ps5Mode
         public int MatchesAfter { get; set; }
         /// <summary>Vrai si les parties jouées (stats Epic) ont servi à répartir les trous.</summary>
         public bool UsedMatches { get; set; }
+        /// <summary>Parties jouées depuis le début (stats Epic), pour l'estimation de la session au-delà du plafond.</summary>
+        public int? MatchesNow { get; set; }
     }
 
     private sealed record Pace(DateTime At, double Ratio, int Before, int Now);
@@ -156,6 +158,7 @@ public static class Ps5Mode
         s.PaceRatio = pace.Ratio;
         s.MatchesBefore = pace.Before;
         s.MatchesAfter = Math.Max(0, pace.Now - pace.Before);
+        s.MatchesNow = pace.Now;
         // Total = dernier point sûr (le plafond) + parties jouées depuis × coffres par partie.
         var afterCap = s.MatchesAfter * pace.Ratio;
         s.PaceEstimate = (int)(Math.Round((last.Value + afterCap) / 10) * 10);
@@ -364,8 +367,11 @@ public static class Ps5Mode
         return 0;
     }
 
-    public static int Run(string dataDir)
+    private static Config? _config;
+
+    public static int Run(string dataDir, Config? config = null)
     {
+        _config = config;
         _folder = Path.Combine(dataDir, "ps5");
         Directory.CreateDirectory(_folder);
         using var instance = new Mutex(false, AppInfo.InstanceMutexFor(dataDir) + ".ps5");
@@ -754,12 +760,84 @@ public static class Ps5Mode
         }
     }
 
+    // ---- Overlay (même fenêtre que le mode PC) ----------------------------------------------------------------
+
+    public sealed class OverlayPos
+    {
+        public int? X { get; set; }
+        public int? Y { get; set; }
+        public bool Locked { get; set; }
+        public bool Hidden { get; set; }
+    }
+
+    private static string OverlayPosPath => Path.Combine(_folder, "overlay.json");
+    private static OverlayPos _overlayPos = new();
+    private static int? _sessionMatches;
+
+    private static void StartOverlay(Config? config)
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        _overlayPos = Load<OverlayPos>(OverlayPosPath) ?? new OverlayPos();
+        NativeOverlay.SetAppearance(config?.OverlaySize ?? 100, config?.OverlayOpacity ?? 100);
+        var style = config?.OverlayStyle ?? "hud";
+        NativeOverlay.SetStyle(Array.IndexOf(NativeOverlay.Styles, style) >= 0 ? style : "hud");
+        NativeOverlay.Start(_overlayPos.X, _overlayPos.Y, _overlayPos.Locked,
+            (x, y) => { _overlayPos.X = x; _overlayPos.Y = y; SaveOverlayPos(); },
+            locked => { _overlayPos.Locked = locked; SaveOverlayPos(); });
+        UpdateOverlay();
+        if (_overlayPos.Hidden && NativeOverlay.IsVisible) NativeOverlay.Toggle();
+    }
+
+    private static void StopOverlay()
+    {
+        if (OperatingSystem.IsWindows()) NativeOverlay.Stop();
+    }
+
+    private static void SaveOverlayPos()
+    {
+        try { Save(OverlayPosPath, _overlayPos); } catch { }
+    }
+
+    private static void UpdateOverlay()
+    {
+        if (!OperatingSystem.IsWindows() || !NativeOverlay.IsRunning) return;
+        var total = _tracked?.Value;
+        var today = DateTime.Now.Date;
+        var todayExact = _season.PerDayExact.GetValueOrDefault(today);
+        var todayEst = _season.PerDayEstimated.GetValueOrDefault(today);
+        var session = _tracked != null && _sessionStart != null ? _tracked.Value - _sessionStart.Value : 0;
+        var sessionText = "+" + L.N(session);
+        if (Capped && _season.MatchesNow is int m)
+        {
+            _sessionMatches ??= m;
+            sessionText = "≈ +" + L.N((int)Math.Round((m - _sessionMatches.Value) * _season.PaceRatio));
+        }
+        var totalText = Capped && _season.PaceEstimate is int est ? "≈" + L.N(est) : total == null ? "–" : L.N(total.Value);
+        var todayText = (todayEst >= 0.5 ? "≈ +" : "+") + L.N((int)Math.Round(todayExact + todayEst));
+        var epicText = total == null ? "–" : L.N(total.Value) + (Capped ? "+" : "");
+        var rows = new List<OverlayRow>
+        {
+            new(L.T("Aujourd'hui", "Today", "Hoy"), todayText),
+            new(L.T("Session", "Session", "Sesión"), sessionText),
+            new("Epic", epicText),
+        };
+        NativeOverlay.Update(new OverlayView(totalText, null, L.T("cette saison", "this season", "esta temporada"), false, "PS5", rows,
+            Treasures: epicText, Session: sessionText, Last: todayText, LastLabel: L.T("Aujourd'hui", "Today", "Hoy"), ThirdLabel: "Epic"));
+        // Test : CHESTCOUNTER_OVERLAY_SNAPSHOT=<fichier.png> enregistre l'overlay tel qu'il est dessiné.
+        if (Environment.GetEnvironmentVariable("CHESTCOUNTER_OVERLAY_SNAPSHOT") is { Length: > 0 } snap)
+        {
+            Thread.Sleep(500);
+            NativeOverlay.Snapshot(snap);
+        }
+    }
+
     // ---- Écran principal ----------------------------------------------------------------------------------------
 
     private enum Exit { Quit, Relogin }
 
     private static Exit MainScreen()
     {
+        if (OperatingSystem.IsWindows() && !NativeOverlay.IsRunning) StartOverlay(_config);
         ConsoleUi.Screen("Chest Counter · PS5");
         Frames.Invalidate();
         Task<bool>? polling = null;
@@ -777,6 +855,7 @@ public static class Ps5Mode
                 var ok = polling.Result;
                 polling = null;
                 WriteReport();
+                UpdateOverlay();
                 if (ok && !_reportOpened)
                 {
                     _reportOpened = true;
@@ -830,10 +909,26 @@ public static class Ps5Mode
                         Frames.Invalidate();
                         lastDraw = DateTime.MinValue;
                         break;
+                    case 'v':
+                        if (OperatingSystem.IsWindows() && NativeOverlay.IsRunning)
+                        {
+                            NativeOverlay.Toggle();
+                            _overlayPos.Hidden = !NativeOverlay.IsVisible;
+                            SaveOverlayPos();
+                        }
+                        break;
+                    case 'l':
+                        if (OperatingSystem.IsWindows() && NativeOverlay.IsRunning) NativeOverlay.ToggleLock();
+                        break;
                     case 'q':
+                        StopOverlay();
                         return Exit.Quit;
                 }
-                if (key.Key == ConsoleKey.Escape) return Exit.Quit;
+                if (key.Key == ConsoleKey.Escape)
+                {
+                    StopOverlay();
+                    return Exit.Quit;
+                }
             }
             Thread.Sleep(100);
         }
@@ -984,6 +1079,8 @@ public static class Ps5Mode
         f.Add(
             new Seg("  [R] ", gold), new Seg(L.T("actualiser", "refresh", "actualizar") + (syncing ? "" : $" ({next}s)") + "   ", mut),
             new Seg("[P] ", gold), new Seg(L.T("page", "page", "página") + "   ", mut),
+            new Seg("[V] ", gold), new Seg("overlay   ", mut),
+            new Seg("[L] ", gold), new Seg(L.T("verrou", "lock", "bloqueo") + "   ", mut),
             new Seg("[C] ", gold), new Seg(L.T("compteur", "counter", "contador") + "   ", mut),
             new Seg("[O] ", gold), new Seg(L.T("dossier", "folder", "carpeta") + "   ", mut),
             new Seg("[D] ", gold), new Seg(L.T("déconnexion", "sign out", "cerrar sesión") + "   ", mut),

@@ -15,7 +15,10 @@ public sealed record OverlayRow(string Label, string Value, bool Treasure = fals
 /// <param name="Current">Right counter (match in progress, or last match); null = "—".</param>
 /// <param name="CurrentLive">Right counter is the match in progress (green).</param>
 /// <param name="Badge">Header badge ("● EN DIRECT" / "● LIVE", "● PARTIE EN COURS" / "● MATCH IN PROGRESS") or null.</param>
-public sealed record OverlayView(string Total, string? Current, string CurrentCaption, bool CurrentLive, string? Badge, IReadOnlyList<OverlayRow> Rows, string Treasures = "0", string Session = "0", string? Last = null);
+public sealed record OverlayView(string Total, string? Current, string CurrentCaption, bool CurrentLive, string? Badge, IReadOnlyList<OverlayRow> Rows, string Treasures = "0", string Session = "0", string? Last = null,
+    string? LastLabel = null, string? ThirdLabel = null);
+// LastLabel : remplace « Dernière » dans le HUD (mode PS5 : « Aujourd'hui »).
+// ThirdLabel : la 3e ligne du HUD devient « libellé • Treasures » au lieu de l'étoile (mode PS5 : « Epic »).
 
 [SupportedOSPlatform("windows")]
 public static class NativeOverlay
@@ -615,7 +618,7 @@ public static class NativeOverlay
         {
             return new HudRow(L.T("En partie", "In a match", "En partida"), "", true); // figures readable only at the end
         }
-        return new HudRow(L.T("Dernière", "Last", "Última"), v.Last ?? "—", false);
+        return new HudRow(v.LastLabel ?? L.T("Dernière", "Last", "Última"), v.Last ?? "—", false);
     }
 
     private static int Sc(double v) => (int)Math.Round(v * _scale);
@@ -638,7 +641,7 @@ public static class NativeOverlay
             {
                 Sc(14) + TextWidth(hdc, _fontHudSmall, state.Label + Sep + state.Value, out _hudSmallH),
                 TextWidth(hdc, _fontHudSmall, sessionLabel + Sep + v.Session, out _),
-                Sc(22) + TextWidth(hdc, _fontHudSmall, v.Treasures, out _),
+                v.ThirdLabel != null ? TextWidth(hdc, _fontHudSmall, v.ThirdLabel + Sep + v.Treasures, out _) : Sc(22) + TextWidth(hdc, _fontHudSmall, v.Treasures, out _),
             }.Max();
             w = lockW + pad + Math.Max(Sc(26) + Sc(8) + bigW, rowsW) + pad + Sc(14);
             h = pad + _hudBigH + 3 * (_hudSmallH + Sc(2)) + pad;
@@ -823,6 +826,11 @@ public static class NativeOverlay
         y += rowH + Sc(2);
         LabelValue(hdc, L.T("Session", "Session", "Sesión"), v.Session, left, right, y, rowH, white);
         y += rowH + Sc(2);
+        if (v.ThirdLabel != null)
+        {
+            LabelValue(hdc, v.ThirdLabel, v.Treasures, left, right, y, rowH, white);
+            return;
+        }
         var tw = TextWidth(hdc, _fontHudSmall, v.Treasures, out _);
         Outlined(hdc, _fontHudSmall, Rgb(214, 190, 255), v.Treasures, left, y, right, y + rowH, DT_RIGHT, thin: true);
         Star(hdc, right - tw - Sc(12), y + rowH / 2, Sc(8), Rgb(196, 155, 255), ink);

@@ -111,7 +111,7 @@ if (args.Contains("--ps5-quests"))
 if (args.Contains("--ps5"))
 {
     L.Set(L.Normalize(langArg) ?? store.LoadConfig()?.Language ?? L.SystemDefault);
-    return Ps5Mode.Run(dataDir);
+    return Ps5Mode.Run(dataDir, store.LoadConfig());
 }
 var interactive = ConsoleUi.Interactive;
 if (interactive && !once && previewPath == null)
