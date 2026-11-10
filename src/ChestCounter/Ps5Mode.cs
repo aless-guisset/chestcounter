@@ -71,7 +71,7 @@ public static class Ps5Mode
         public List<Gain> History { get; set; } = new();
         /// <summary>Cache des stats Epic : parties jouées depuis MatchStart jusqu'à la fin de chaque jour (yyyy-MM-dd).</summary>
         public DateTime? MatchStart { get; set; }
-        public Dictionary<string, int> MatchDays { get; set; } = new();
+        public Dictionary<string, int> MatchesPerUtcDay { get; set; } = new();
     }
 
     public sealed record Counter(string Id, string Quest, string Objective, int Value, string State);
@@ -105,7 +105,6 @@ public static class Ps5Mode
     private sealed record Pace(DateTime At, double Ratio, int Before, int Now);
     private static Pace? _pace;
     private static DateTime _matchesRefreshed = DateTime.MinValue;
-    private static int? _matchesToday;
 
     // ---- Modèle de la saison --------------------------------------------------------------------------------------
     //
@@ -135,7 +134,7 @@ public static class Ps5Mode
 
         var start = clean[0].At;
         RefreshMatches(start);
-        s.UsedMatches = _data.MatchDays.Count > 0;
+        s.UsedMatches = _data.MatchesPerUtcDay.Count > 0;
 
         for (var i = 1; i < clean.Count; i++)
         {
@@ -168,7 +167,7 @@ public static class Ps5Mode
         {
             var from = Max(day, last.At.ToLocalTime());
             var to = Min(day.AddDays(1), DateTime.Now);
-            raw.Add((day, Math.Max(0, MatchesAt(to, start) - MatchesAt(from, start))));
+            raw.Add((day, Math.Max(0, MatchesAt(to.ToUniversalTime(), start) - MatchesAt(from.ToUniversalTime(), start))));
         }
         var rawSum = raw.Sum(r => r.Matches);
         foreach (var (day, n) in raw)
@@ -192,7 +191,7 @@ public static class Ps5Mode
             var s0 = Max(day, from);
             var s1 = Min(day.AddDays(1), to);
             if (s1 <= s0) continue;
-            days.Add((day, Math.Max(0, MatchesAt(s1, start) - MatchesAt(s0, start)), (s1 - s0).TotalSeconds));
+            days.Add((day, Math.Max(0, MatchesAt(s1.ToUniversalTime(), start) - MatchesAt(s0.ToUniversalTime(), start)), (s1 - s0).TotalSeconds));
         }
         var totalMatches = days.Sum(d => d.Matches);
         var totalSeconds = days.Sum(d => d.Seconds);
@@ -204,64 +203,71 @@ public static class Ps5Mode
     }
 
     /// <summary>
-    /// Parties jouées depuis <paramref name="start"/> jusqu'à la fin de chaque jour (stats Epic). Les jours de plus de
-    /// 2 jours sont gardés en cache (data.json) : Epic les range par blocs de quelques heures, les récents peuvent encore bouger.
+    /// Parties jouées par jour, d'après les stats Epic. Epic les publie par <b>jour UTC</b>, vers 1 h du matin le
+    /// lendemain : un jour n'apparaît dans une fenêtre de temps que si elle le couvre en entier. On demande donc chaque
+    /// jour UTC [00:00, 24:00). Le jour en cours n'est pas encore publié. Cache dans data.json (les 2 derniers jours sont
+    /// redemandés, toutes les 10 minutes au plus).
     /// </summary>
-    private static void RefreshMatches(DateTime start)
+    private static void RefreshMatches(DateTime startUtc)
     {
-        if (_data.MatchStart != start)
+        if (_data.MatchStart != startUtc)
         {
-            _data.MatchStart = start;
-            _data.MatchDays.Clear();
+            _data.MatchStart = startUtc;
+            _data.MatchesPerUtcDay.Clear();
             _matchesRefreshed = DateTime.MinValue;
         }
         if (DateTime.UtcNow - _matchesRefreshed < TimeSpan.FromMinutes(10)) return;
-        var today = DateTime.Now.Date;
-        for (var day = start.ToLocalTime().Date; day < today; day = day.AddDays(1))
+        var todayUtc = DateTime.UtcNow.Date;
+        for (var d = DateTime.SpecifyKind(startUtc.Date, DateTimeKind.Utc); d < todayUtc; d = d.AddDays(1))
         {
-            var key = day.ToString("yyyy-MM-dd");
-            if (_data.MatchDays.ContainsKey(key) && day < today.AddDays(-2)) continue;
-            var n = MatchesBetween(start, day.AddDays(1).ToUniversalTime());
+            var key = d.ToString("yyyy-MM-dd");
+            if (_data.MatchesPerUtcDay.ContainsKey(key) && d < todayUtc.AddDays(-2)) continue;
+            var n = MatchesBetween(d, d.AddDays(1));
             if (n == null) return; // stats indisponibles : on réessaiera
-            _data.MatchDays[key] = n.Value;
+            _data.MatchesPerUtcDay[key] = n.Value;
         }
-        _matchesToday = MatchesBetween(start, DateTime.UtcNow);
         _matchesRefreshed = DateTime.UtcNow;
         Save(DataPath, _data);
     }
 
-    /// <summary>Parties jouées entre le début et un instant (heure locale), interpolé dans la journée.</summary>
-    private static double MatchesAt(DateTime local, DateTime start)
+    /// <summary>
+    /// Parties jouées entre le début et un instant (UTC) : jours UTC publiés, chacun réparti uniformément sur sa
+    /// journée (Epic ne donne pas l'heure). Le jour du début compte à partir du début.
+    /// </summary>
+    private static double MatchesAt(DateTime utc, DateTime startUtc)
     {
-        var startLocal = start.ToLocalTime();
-        if (local <= startLocal) return 0;
-        var day = local.Date;
-        double Cum(DateTime d) => d < startLocal.Date ? 0
-            : d == DateTime.Now.Date ? _matchesToday ?? Cum(d.AddDays(-1))
-            : _data.MatchDays.TryGetValue(d.ToString("yyyy-MM-dd"), out var n) ? n : Cum(d.AddDays(-1));
-        var before = Cum(day.AddDays(-1));
-        var after = Math.Max(before, Cum(day));
-        var dayStart = Max(day, startLocal);
-        var dayEnd = day == DateTime.Now.Date ? DateTime.Now : day.AddDays(1);
-        var span = (dayEnd - dayStart).TotalSeconds;
-        var f = span <= 0 ? 1 : Math.Clamp((local - dayStart).TotalSeconds / span, 0, 1);
-        return before + (after - before) * f;
+        utc = utc.ToUniversalTime();
+        if (utc <= startUtc) return 0;
+        double sum = 0;
+        // Les parties du jour UTC « d » sont placées sur la même date chez le joueur (journée locale de minuit à minuit) :
+        // à une heure près, c'est le même jour, et ça évite de glisser des parties de la veille sur le lendemain.
+        for (var d = startUtc.ToLocalTime().Date; d <= utc.ToLocalTime().Date; d = d.AddDays(1))
+        {
+            if (!_data.MatchesPerUtcDay.TryGetValue(d.ToString("yyyy-MM-dd"), out var n) || n == 0) continue;
+            var dayStart = Max(DateTime.SpecifyKind(d, DateTimeKind.Local).ToUniversalTime(), startUtc);
+            var dayEnd = DateTime.SpecifyKind(d.AddDays(1), DateTimeKind.Local).ToUniversalTime();
+            var span = (dayEnd - dayStart).TotalSeconds;
+            sum += span <= 0 ? n : n * Math.Clamp((Min(utc, dayEnd) - dayStart).TotalSeconds / span, 0, 1);
+        }
+        return sum;
     }
+
+    /// <summary>Jours UTC dont les parties ne sont pas encore publiées par Epic (aujourd'hui).</summary>
+    public static bool TodayPending => !_data.MatchesPerUtcDay.ContainsKey(DateTime.UtcNow.Date.ToString("yyyy-MM-dd"));
 
     /// <summary>Coffres par partie, mesurés jusqu'au plafond (ou jusqu'à l'estimation par les coffres rares, plus longue).</summary>
     private static Pace? ComputePace(Season s, DateTime start, DateTime capAt)
     {
-        if (_pace != null && DateTime.UtcNow - _pace.At < TimeSpan.FromMinutes(10)) return _pace;
-        var before = MatchesBetween(start, capAt);
-        var now = MatchesBetween(start, DateTime.UtcNow);
-        if (before is not > 0 || now == null) return _pace;
-        var ratio = (double)Cap / before.Value;
+        var before = MatchesAt(capAt, start);
+        var now = MatchesAt(DateTime.UtcNow, start);
+        if (before < 1) return null;
+        var ratio = Cap / before;
         if (s.Estimate is int rareEst && s.EstimateAt is DateTime rareAt)
         {
-            var atRare = MatchesBetween(start, rareAt);
-            if (atRare > before) ratio = (double)rareEst / atRare.Value;
+            var atRare = MatchesAt(rareAt, start);
+            if (atRare > before) ratio = rareEst / atRare;
         }
-        _pace = new Pace(DateTime.UtcNow, ratio, before.Value, Math.Max(now.Value, before.Value));
+        _pace = new Pace(DateTime.UtcNow, ratio, (int)Math.Round(before), (int)Math.Round(Math.Max(now, before)));
         return _pace;
     }
 
@@ -349,10 +355,11 @@ public static class Ps5Mode
         ImportFromNodeTool();
         if (!EnsureSession()) return 1;
         var sb = new StringBuilder();
-        var today = DateTime.Now.Date;
-        for (var d = today.AddDays(-12); d <= today; d = d.AddDays(1))
+        var todayUtc = DateTime.UtcNow.Date;
+        sb.AppendLine("== parties par jour UTC (publiées par Epic vers 1 h le lendemain) ==");
+        for (var d = todayUtc.AddDays(-14); d <= todayUtc; d = d.AddDays(1))
         {
-            sb.AppendLine($"{d:yyyy-MM-dd}  {MatchesBetween(d.ToUniversalTime(), d.AddDays(1).ToUniversalTime())?.ToString() ?? "erreur"}");
+            sb.AppendLine($"{d:yyyy-MM-dd}  {MatchesBetween(d, d.AddDays(1))?.ToString() ?? "erreur"}");
         }
         sb.AppendLine($"total sans fenêtre (vie entière)  {MatchesBetween(new DateTime(2017, 1, 1, 0, 0, 0, DateTimeKind.Utc), DateTime.UtcNow)}");
         try
@@ -772,7 +779,6 @@ public static class Ps5Mode
 
     private static string OverlayPosPath => Path.Combine(_folder, "overlay.json");
     private static OverlayPos _overlayPos = new();
-    private static int? _sessionMatches;
 
     private static void StartOverlay(Config? config)
     {
@@ -807,13 +813,14 @@ public static class Ps5Mode
         var todayEst = _season.PerDayEstimated.GetValueOrDefault(today);
         var session = _tracked != null && _sessionStart != null ? _tracked.Value - _sessionStart.Value : 0;
         var sessionText = "+" + L.N(session);
-        if (Capped && _season.MatchesNow is int m)
+        if (Capped)
         {
-            _sessionMatches ??= m;
-            sessionText = "≈ +" + L.N((int)Math.Round((m - _sessionMatches.Value) * _season.PaceRatio));
+            // Au-delà du plafond, Epic ne publie les parties que le lendemain : la session ne peut pas être suivie en direct.
+            sessionText = "—";
         }
         var totalText = Capped && _season.PaceEstimate is int est ? "≈" + L.N(est) : total == null ? "–" : L.N(total.Value);
-        var todayText = (todayEst >= 0.5 ? "≈ +" : "+") + L.N((int)Math.Round(todayExact + todayEst));
+        var todayText = Capped && TodayPending && todayExact < 0.5 ? "—"
+            : (todayEst >= 0.5 ? "≈ +" : "+") + L.N((int)Math.Round(todayExact + todayEst));
         var epicText = total == null ? "–" : L.N(total.Value) + (Capped ? "+" : "");
         var rows = new List<OverlayRow>
         {
