@@ -86,6 +86,49 @@ public static class Ps5Mode
         /// <summary>Estimation au-delà du plafond (via le rythme des coffres rares), et sa date.</summary>
         public int? Estimate { get; set; }
         public DateTime? EstimateAt { get; set; }
+        /// <summary>Estimation à aujourd'hui : coffres par partie (jusqu'à 1 000) × parties jouées depuis (stats Epic).</summary>
+        public int? PaceEstimate { get; set; }
+        public double PaceRatio { get; set; }
+        public int MatchesBefore { get; set; }
+        public int MatchesAfter { get; set; }
+    }
+
+    private sealed record Pace(DateTime At, int Estimate, double Ratio, int Before, int After, Dictionary<DateTime, double> PerDay);
+    private static Pace? _pace;
+
+    /// <summary>
+    /// Au-delà du plafond : les stats Epic donnent les parties jouées sur une période (par blocs de quelques heures,
+    /// pas à la minute près). Coffres par partie mesurés jusqu'aux 1 000, appliqués aux parties jouées depuis.
+    /// Recalculé toutes les 10 minutes.
+    /// </summary>
+    private static void ApplyPace(Season s)
+    {
+        var thousand = s.Count.LastOrDefault(m => m.Value >= Cap);
+        if (thousand == null) return;
+        if (_pace == null || DateTime.UtcNow - _pace.At > TimeSpan.FromMinutes(10))
+        {
+            var start = s.Count[0].At;
+            var before = MatchesBetween(start, thousand.At);
+            var now = MatchesBetween(start, DateTime.UtcNow);
+            if (before is not > 0 || now == null) return;
+            var ratio = (double)Cap / before.Value;
+            var perDay = new Dictionary<DateTime, double>();
+            var prev = before.Value;
+            for (var dayEnd = thousand.At.ToLocalTime().Date.AddDays(1); dayEnd <= DateTime.Now.Date.AddDays(1); dayEnd = dayEnd.AddDays(1))
+            {
+                var cum = MatchesBetween(start, dayEnd > DateTime.Now ? DateTime.UtcNow : dayEnd.ToUniversalTime());
+                if (cum == null) break;
+                perDay[dayEnd.AddDays(-1)] = Math.Max(0, cum.Value - prev) * ratio;
+                prev = Math.Max(prev, cum.Value);
+            }
+            var after = Math.Max(0, now.Value - before.Value);
+            _pace = new Pace(DateTime.UtcNow, (int)(Math.Round((Cap + after * ratio) / 10) * 10), ratio, before.Value, after, perDay);
+        }
+        s.PaceEstimate = _pace.Estimate;
+        s.PaceRatio = _pace.Ratio;
+        s.MatchesBefore = _pace.Before;
+        s.MatchesAfter = _pace.After;
+        foreach (var (day, n) in _pace.PerDay) s.PerDay[day] = s.PerDay.GetValueOrDefault(day) + n;
     }
 
     private sealed class EpicException(HttpStatusCode status, string code, string message) : Exception($"{(int)status} {code} {message}".Trim())
@@ -143,6 +186,53 @@ public static class Ps5Mode
             }
         }
         File.WriteAllText(Path.Combine(_folder, "quests.txt"), sb.ToString());
+        return 0;
+    }
+
+    private const string StatsUrl = "https://statsproxy-public-service-live.ol.epicgames.com/statsproxy/api/statsv2/account/";
+
+    /// <summary>Parties BR jouées entre deux instants (statsv2 avec fenêtre de temps), ou null si indisponible.</summary>
+    public static int? MatchesBetween(DateTime fromUtc, DateTime toUtc)
+    {
+        try
+        {
+            var s = Epic($"{StatsUrl}{_accountId}?startTime={new DateTimeOffset(fromUtc).ToUnixTimeSeconds()}&endTime={new DateTimeOffset(toUtc).ToUnixTimeSeconds()}", token: _token);
+            if (s["stats"] is not JsonObject stats) return 0;
+            return stats.Where(kv => kv.Key.StartsWith("br_matchesplayed_")).Sum(kv => kv.Value is JsonValue v && v.TryGetValue<int>(out var n) ? n : 0);
+        }
+        catch (Exception e)
+        {
+            ErrorLog.Write("PS5 stats", e);
+            return null;
+        }
+    }
+
+    /// <summary>--ps5-stats : parties jouées par jour (essai de la fenêtre de temps de statsv2), dans ps5\\stats.txt.</summary>
+    public static int DumpStats(string dataDir)
+    {
+        _folder = Path.Combine(dataDir, "ps5");
+        Directory.CreateDirectory(_folder);
+        ImportFromNodeTool();
+        if (!EnsureSession()) return 1;
+        var sb = new StringBuilder();
+        var today = DateTime.Now.Date;
+        for (var d = today.AddDays(-12); d <= today; d = d.AddDays(1))
+        {
+            sb.AppendLine($"{d:yyyy-MM-dd}  {MatchesBetween(d.ToUniversalTime(), d.AddDays(1).ToUniversalTime())?.ToString() ?? "erreur"}");
+        }
+        var start = new DateTime(2026, 11, 1, 8, 0, 0);
+        for (var d = new DateTime(2026, 11, 2); d <= today.AddDays(1); d = d.AddDays(1))
+        {
+            sb.AppendLine($"cumul 01/11 08:00 → {d:yyyy-MM-dd}  {MatchesBetween(start.ToUniversalTime(), d.ToUniversalTime())?.ToString() ?? "erreur"}");
+        }
+        sb.AppendLine($"cumul → 03/11 12:22  {MatchesBetween(start.ToUniversalTime(), new DateTime(2026, 11, 3, 12, 22, 0).ToUniversalTime())}");
+        sb.AppendLine($"cumul → 06/11 14:16  {MatchesBetween(start.ToUniversalTime(), new DateTime(2026, 11, 6, 14, 16, 0).ToUniversalTime())}");
+        foreach (var (a, b) in new[] { (new DateTime(2026, 11, 1), DateTime.Now), (new DateTime(2026, 10, 1), DateTime.Now), (new DateTime(2025, 1, 1), DateTime.Now), (new DateTime(2026, 11, 1), new DateTime(2026, 11, 4)) })
+        {
+            sb.AppendLine($"{a:yyyy-MM-dd} → {b:yyyy-MM-dd HH:mm}  {MatchesBetween(a.ToUniversalTime(), b.ToUniversalTime())?.ToString() ?? "erreur"}");
+        }
+        sb.AppendLine($"total sans fenêtre (vie entière)  {MatchesBetween(new DateTime(2017, 1, 1, 0, 0, 0, DateTimeKind.Utc), DateTime.UtcNow)}");
+        File.WriteAllText(Path.Combine(_folder, "stats.txt"), sb.ToString());
         return 0;
     }
 
@@ -479,6 +569,7 @@ public static class Ps5Mode
             var profile = QueryProfile();
             _counters = FindCounters(profile);
             _season = BuildSeason(profile);
+            ApplyPace(_season);
             var c = _counters.FirstOrDefault(x => x.Id == _data.TrackId);
             if (c != null && !_data.Manual && c.Value >= Cap)
             {
@@ -702,6 +793,12 @@ public static class Ps5Mode
             f.Blank();
             f.Add("  " + L.T("TA SAISON", "YOUR SEASON", "TU TEMPORADA"), ConsoleColor.Cyan);
             f.Add("    " + string.Join("   ", _season.Count.Skip(1).Select(m => $"{L.N(m.Value)} ({m.At.ToLocalTime():dd'/'MM HH:mm})")), ConsoleColor.White);
+            if (_season.PaceEstimate is int pace)
+            {
+                f.Add(new Seg("    ≈ " + L.N(pace), gold), new Seg(L.T($"  coffres estimés aujourd'hui (≈ {_season.PaceRatio:0} par partie × {_season.MatchesAfter} parties depuis les 1 000)",
+                    $"  chests estimated today (≈ {_season.PaceRatio:0} per match × {_season.MatchesAfter} matches since 1,000)",
+                    $"  cofres estimados hoy (≈ {_season.PaceRatio:0} por partida × {_season.MatchesAfter} partidas desde los 1000)"), mut));
+            }
             if (_season.Estimate is int est)
             {
                 f.Add(new Seg("    ≈ " + L.N(est), gold), new Seg(L.T($"  coffres estimés au {_season.EstimateAt!.Value.ToLocalTime():dd'/'MM} (d'après ton rythme de coffres rares)",

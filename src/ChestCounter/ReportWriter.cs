@@ -462,7 +462,9 @@ public static class ReportWriter
               {Tile("+" + N(today), L.T("aujourd'hui", "today", "hoy"))}
               {Tile("+" + N(session), L.T("cette session", "this session", "esta sesión"))}
               {Tile(before == null ? "–" : N(before.Value) + plus, L.T("avant le suivi", "before tracking", "antes del seguimiento"), data.Baseline == null ? null : data.Baseline.At.ToLocalTime().ToString("dd'/'MM'/'yyyy", Fr))}
-              {(season.Estimate is int est
+              {(season.PaceEstimate is int pace
+                  ? Tile("≈ " + N(pace), L.T("coffres estimés aujourd'hui", "chests estimated today", "cofres estimados hoy"), L.T($"≈ {season.PaceRatio:0} par partie × {season.MatchesAfter} parties depuis les 1 000", $"≈ {season.PaceRatio:0} per match × {season.MatchesAfter} matches since 1,000", $"≈ {season.PaceRatio:0} por partida × {season.MatchesAfter} partidas desde los 1000"))
+                  : season.Estimate is int est
                   ? Tile("≈ " + N(est), L.T("coffres estimés", "estimated chests", "cofres estimados"), L.T($"au {season.EstimateAt!.Value.ToLocalTime():dd'/'MM}, d'après tes coffres rares", $"on {season.EstimateAt!.Value.ToLocalTime():d MMM}, from your rare chests", $"el {season.EstimateAt!.Value.ToLocalTime():dd'/'MM}, según tus cofres raros"))
                   : Tile("+" + N(since), L.T("depuis le suivi", "since tracking", "desde el seguimiento")))}
             </section>
@@ -478,7 +480,7 @@ public static class ReportWriter
         // 30 derniers jours, une barre par jour (même graphique que le mode PC).
         var days = Enumerable.Range(0, 30).Select(i => todayDate.AddDays(i - 29)).ToList();
         var trackedFrom = data.Baseline?.At.ToLocalTime().Date ?? DateTime.MaxValue;
-        var estimated = days.Select(d => d < trackedFrom && season.PerDay.TryGetValue(d, out var v) ? (int)Math.Round(v) : 0).ToList();
+        var estimated = days.Select(d => (capped || d < trackedFrom) && season.PerDay.TryGetValue(d, out var v) ? (int)Math.Round(v) : 0).ToList();
         var perDay = days.Select((d, i) => history.Where(h => h.At.ToLocalTime().Date == d).Sum(h => h.Delta) + estimated[i]).ToList();
         var max = Math.Max(1, perDay.Max());
         sb.Append($"<section><h2 class=\"pirate\">{L.T("Coffres par jour", "Chests per day", "Cofres por día")}</h2><div class=\"card chart\"><div class=\"bars\">");
@@ -491,7 +493,7 @@ public static class ReportWriter
             sb.Append($"<div class=\"col\" aria-label=\"{H(tip)}\"><span class=\"tip\" style=\"bottom:calc({Math.Max(h, 3)}% + 6px)\">{H(tip)}</span><div class=\"bar{cls}\" style=\"height:{h}%{(estimated[i] > 0 ? ";opacity:.55" : "")}\"></div></div>");
         }
         sb.Append($"</div><div class=\"axis\"><span>{days[0].ToString(L.T("dd/MM", "d MMM", "dd/MM"), Fr)}</span>"
-            + (estimated.Any(e => e > 0) ? $"<span>{L.T("barres pâles = reconstruit d'après les paliers Epic, plafonné à 1 000", "faded bars = rebuilt from Epic stages, capped at 1,000", "barras claras = reconstruido con las etapas de Epic, tope de 1000")}</span>" : "")
+            + (estimated.Any(e => e > 0) ? $"<span>{L.T("barres pâles = estimées (paliers Epic, puis parties jouées)", "faded bars = estimated (Epic stages, then matches played)", "barras claras = estimadas (etapas de Epic, luego partidas jugadas)")}</span>" : "")
             + (perDay.Max() == 0 ? $"<span>{L.T("les jours se remplissent au fil des parties", "days fill in as you play", "los días se llenan al jugar")}</span>" : "")
             + $"<span>{L.T("aujourd'hui", "today", "hoy")}</span></div></div></section>");
 
@@ -513,6 +515,9 @@ public static class ReportWriter
             if (season.Count.Count > 0)
             {
                 sb.Append($"<div class=\"items\" style=\"padding:10px 0 8px\">{L.T($"Début de la Chasse au trésor : {L.DateTimeShort(season.Count[0].At.ToLocalTime())}.", $"Treasure Hunt started: {L.DateTimeShort(season.Count[0].At.ToLocalTime())}.", $"Inicio de la Caza del tesoro: {L.DateTimeShort(season.Count[0].At.ToLocalTime())}.")}"
+                    + (season.PaceEstimate is int p2 ? " " + L.T($"Au-delà de 1 000 : tu as joué {season.MatchesBefore} parties pour tes 1 000 premiers coffres (≈ {season.PaceRatio:0} coffres par partie), puis {season.MatchesAfter} parties depuis, d'après tes stats Epic : ≈ {N(p2)} coffres aujourd'hui. Les stats Epic sont regroupées par blocs de quelques heures, donc c'est une estimation qui peut se tromper de 30 à 40 %.",
+                        $"Beyond 1,000: you played {season.MatchesBefore} matches for your first 1,000 chests (≈ {season.PaceRatio:0} chests per match), then {season.MatchesAfter} matches since, from your Epic stats: ≈ {N(p2)} chests today. Epic stats are grouped in blocks of a few hours, so this estimate can be off by 30–40%.",
+                        $"Más allá de 1000: jugaste {season.MatchesBefore} partidas para tus primeros 1000 cofres (≈ {season.PaceRatio:0} cofres por partida), luego {season.MatchesAfter} partidas desde entonces, según tus stats de Epic: ≈ {N(p2)} cofres hoy. Las stats de Epic se agrupan en bloques de unas horas, así que esta estimación puede fallar un 30–40 %.") : "")
                     + (season.Estimate is int e2 ? " " + L.T($"Estimation au-delà de 1 000 : à 1 000 coffres tu avais environ 1 coffre rare pour {(double)e2 / Math.Max(1, season.Rare[^1].Value):0} coffres ; tu as atteint {season.Rare[^1].Value} coffres rares le {season.EstimateAt!.Value.ToLocalTime():dd'/'MM}, soit ≈ {N(e2)} coffres. C'est une estimation.",
                         $"Estimate beyond 1,000: at 1,000 chests you had about 1 rare chest per {(double)e2 / Math.Max(1, season.Rare[^1].Value):0} chests; you reached {season.Rare[^1].Value} rare chests on {season.EstimateAt!.Value.ToLocalTime():d MMM}, so ≈ {N(e2)} chests. This is an estimate.",
                         $"Estimación más allá de 1000: con 1000 cofres tenías 1 cofre raro cada {(double)e2 / Math.Max(1, season.Rare[^1].Value):0} cofres; llegaste a {season.Rare[^1].Value} cofres raros el {season.EstimateAt!.Value.ToLocalTime():dd'/'MM}, o sea ≈ {N(e2)} cofres. Es una estimación.") : "")

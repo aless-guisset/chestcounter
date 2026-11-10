@@ -100,6 +100,10 @@ var store = new Store(dataDir);
 ErrorLog.FilePath = store.ErrorLogPath;
 
 // --ps5 : mode console (PS5, Xbox, Switch). Les replays restent dans la console : on lit le compteur du compte Epic.
+if (args.Contains("--ps5-stats"))
+{
+    return Ps5Mode.DumpStats(dataDir);
+}
 if (args.Contains("--ps5-quests"))
 {
     return Ps5Mode.DumpQuests(dataDir);
