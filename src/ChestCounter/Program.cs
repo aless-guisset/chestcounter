@@ -65,6 +65,7 @@ for (var i = 0; i < args.Length; i++)
                   --demos <dossier>   dossier des replays (par défaut %LOCALAPPDATA%\FortniteGame\Saved\Demos)
                   --data <dossier>    dossier des données (par défaut %APPDATA%\ChestCounter)
                   --once              analyse les replays terminés puis quitte
+                  --ps5               mode console : lit le compteur de coffres du compte Epic
                   --reset-config      repose les questions de configuration
                   --overlay-preview <fichier.png>   enregistre des aperçus de l'overlay puis quitte
                 """, """
@@ -75,6 +76,7 @@ for (var i = 0; i < args.Length; i++)
                   --demos <folder>    replays folder (default %LOCALAPPDATA%\FortniteGame\Saved\Demos)
                   --data <folder>     data folder (default %APPDATA%\ChestCounter)
                   --once              analyze the finished replays, then quit
+                  --ps5               console mode: reads the chest counter of the Epic account
                   --reset-config      ask the setup questions again
                   --overlay-preview <file.png>   save previews of the overlay, then quit
                 """, """
@@ -85,6 +87,7 @@ for (var i = 0; i < args.Length; i++)
                   --demos <carpeta>   carpeta de repeticiones (por defecto %LOCALAPPDATA%\FortniteGame\Saved\Demos)
                   --data <carpeta>    carpeta de datos (por defecto %APPDATA%\ChestCounter)
                   --once              analiza las repeticiones terminadas y sale
+                  --ps5               modo consola: lee el contador de cofres de la cuenta Epic
                   --reset-config      vuelve a hacer las preguntas de configuración
                   --overlay-preview <archivo.png>   guarda vistas previas del overlay y sale
                 """));
@@ -95,6 +98,13 @@ for (var i = 0; i < args.Length; i++)
 dataDir ??= Store.DefaultFolder();
 var store = new Store(dataDir);
 ErrorLog.FilePath = store.ErrorLogPath;
+
+// --ps5 : mode console (PS5, Xbox, Switch). Les replays restent dans la console : on lit le compteur du compte Epic.
+if (args.Contains("--ps5"))
+{
+    L.Set(L.Normalize(langArg) ?? store.LoadConfig()?.Language ?? L.SystemDefault);
+    return Ps5Mode.Run(dataDir);
+}
 var interactive = ConsoleUi.Interactive;
 if (interactive && !once && previewPath == null)
 {
