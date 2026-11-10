@@ -112,6 +112,12 @@ public static class Ps5Mode
             var now = MatchesBetween(start, DateTime.UtcNow);
             if (before is not > 0 || now == null) return;
             var ratio = (double)Cap / before.Value;
+            // Base plus longue si possible : l'estimation par les coffres rares (jusqu'au palier 100) couvre plus de parties.
+            if (s.Estimate is int rareEst && s.EstimateAt is DateTime rareAt)
+            {
+                var atRare = MatchesBetween(start, rareAt);
+                if (atRare > before) ratio = (double)rareEst / atRare.Value;
+            }
             var perDay = new Dictionary<DateTime, double>();
             var prev = before.Value;
             for (var dayEnd = thousand.At.ToLocalTime().Date.AddDays(1); dayEnd <= DateTime.Now.Date.AddDays(1); dayEnd = dayEnd.AddDays(1))
@@ -122,7 +128,7 @@ public static class Ps5Mode
                 prev = Math.Max(prev, cum.Value);
             }
             var after = Math.Max(0, now.Value - before.Value);
-            _pace = new Pace(DateTime.UtcNow, (int)(Math.Round((Cap + after * ratio) / 10) * 10), ratio, before.Value, after, perDay);
+            _pace = new Pace(DateTime.UtcNow, (int)(Math.Round(now.Value * ratio / 10) * 10), ratio, before.Value, after, perDay);
         }
         s.PaceEstimate = _pace.Estimate;
         s.PaceRatio = _pace.Ratio;
@@ -232,6 +238,14 @@ public static class Ps5Mode
             sb.AppendLine($"{a:yyyy-MM-dd} → {b:yyyy-MM-dd HH:mm}  {MatchesBetween(a.ToUniversalTime(), b.ToUniversalTime())?.ToString() ?? "erreur"}");
         }
         sb.AppendLine($"total sans fenêtre (vie entière)  {MatchesBetween(new DateTime(2017, 1, 1, 0, 0, 0, DateTimeKind.Utc), DateTime.UtcNow)}");
+        try
+        {
+            var st = Epic($"{StatsUrl}{_accountId}?startTime={new DateTimeOffset(new DateTime(2026, 10, 31, 0, 0, 0, DateTimeKind.Utc)).ToUnixTimeSeconds()}&endTime={DateTimeOffset.UtcNow.ToUnixTimeSeconds()}", token: _token);
+            sb.AppendLine("== parties par mode depuis le 31/10 ==");
+            foreach (var (k, v) in ((JsonObject)st["stats"]!).Where(kv => kv.Key.StartsWith("br_matchesplayed_")).OrderByDescending(kv => (int)kv.Value!))
+                sb.AppendLine($"{v,5}  {k}");
+        }
+        catch (Exception e) { sb.AppendLine("erreur " + e.Message); }
         File.WriteAllText(Path.Combine(_folder, "stats.txt"), sb.ToString());
         return 0;
     }
@@ -795,9 +809,9 @@ public static class Ps5Mode
             f.Add("    " + string.Join("   ", _season.Count.Skip(1).Select(m => $"{L.N(m.Value)} ({m.At.ToLocalTime():dd'/'MM HH:mm})")), ConsoleColor.White);
             if (_season.PaceEstimate is int pace)
             {
-                f.Add(new Seg("    ≈ " + L.N(pace), gold), new Seg(L.T($"  coffres estimés aujourd'hui (≈ {_season.PaceRatio:0} par partie × {_season.MatchesAfter} parties depuis les 1 000)",
-                    $"  chests estimated today (≈ {_season.PaceRatio:0} per match × {_season.MatchesAfter} matches since 1,000)",
-                    $"  cofres estimados hoy (≈ {_season.PaceRatio:0} por partida × {_season.MatchesAfter} partidas desde los 1000)"), mut));
+                f.Add(new Seg("    ≈ " + L.N(pace), gold), new Seg(L.T($"  coffres estimés aujourd'hui (≈ {_season.PaceRatio:0} par partie × {_season.MatchesBefore + _season.MatchesAfter} parties)",
+                    $"  chests estimated today (≈ {_season.PaceRatio:0} per match × {_season.MatchesBefore + _season.MatchesAfter} matches)",
+                    $"  cofres estimados hoy (≈ {_season.PaceRatio:0} por partida × {_season.MatchesBefore + _season.MatchesAfter} partidas)"), mut));
             }
             if (_season.Estimate is int est)
             {
