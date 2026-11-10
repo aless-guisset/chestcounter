@@ -463,7 +463,7 @@ public static class ReportWriter
               {Tile("+" + N(session), L.T("cette session", "this session", "esta sesión"))}
               {Tile(before == null ? "–" : N(before.Value) + plus, L.T("avant le suivi", "before tracking", "antes del seguimiento"), data.Baseline == null ? null : data.Baseline.At.ToLocalTime().ToString("dd'/'MM'/'yyyy", Fr))}
               {(season.PaceEstimate is int pace
-                  ? Tile("≈ " + N(pace), L.T("coffres estimés aujourd'hui", "chests estimated today", "cofres estimados hoy"), L.T($"≈ {season.PaceRatio:0} par partie × {season.MatchesBefore + season.MatchesAfter} parties cette saison", $"≈ {season.PaceRatio:0} per match × {season.MatchesBefore + season.MatchesAfter} matches this season", $"≈ {season.PaceRatio:0} por partida × {season.MatchesBefore + season.MatchesAfter} partidas esta temporada"))
+                  ? Tile("≈ " + N(pace), L.T("coffres estimés aujourd'hui", "chests estimated today", "cofres estimados hoy"), L.T($"≈ {season.PaceRatio:0} par partie × {season.MatchesAfter} parties depuis les 1 000", $"≈ {season.PaceRatio:0} per match × {season.MatchesAfter} matches since 1,000", $"≈ {season.PaceRatio:0} por partida × {season.MatchesAfter} partidas desde los 1000"))
                   : season.Estimate is int est
                   ? Tile("≈ " + N(est), L.T("coffres estimés", "estimated chests", "cofres estimados"), L.T($"au {season.EstimateAt!.Value.ToLocalTime():dd'/'MM}, d'après tes coffres rares", $"on {season.EstimateAt!.Value.ToLocalTime():d MMM}, from your rare chests", $"el {season.EstimateAt!.Value.ToLocalTime():dd'/'MM}, según tus cofres raros"))
                   : Tile("+" + N(since), L.T("depuis le suivi", "since tracking", "desde el seguimiento")))}
@@ -479,9 +479,8 @@ public static class ReportWriter
 
         // 30 derniers jours, une barre par jour (même graphique que le mode PC).
         var days = Enumerable.Range(0, 30).Select(i => todayDate.AddDays(i - 29)).ToList();
-        var trackedFrom = data.Baseline?.At.ToLocalTime().Date ?? DateTime.MaxValue;
-        var estimated = days.Select(d => (capped || d < trackedFrom) && season.PerDay.TryGetValue(d, out var v) ? (int)Math.Round(v) : 0).ToList();
-        var perDay = days.Select((d, i) => history.Where(h => h.At.ToLocalTime().Date == d).Sum(h => h.Delta) + estimated[i]).ToList();
+        var estimated = days.Select(d => (int)Math.Round(season.PerDayEstimated.GetValueOrDefault(d))).ToList();
+        var perDay = days.Select((d, i) => (int)Math.Round(season.PerDayExact.GetValueOrDefault(d)) + estimated[i]).ToList();
         var max = Math.Max(1, perDay.Max());
         sb.Append($"<section><h2 class=\"pirate\">{L.T("Coffres par jour", "Chests per day", "Cofres por día")}</h2><div class=\"card chart\"><div class=\"bars\">");
         for (var i = 0; i < days.Count; i++)
@@ -493,7 +492,7 @@ public static class ReportWriter
             sb.Append($"<div class=\"col\" aria-label=\"{H(tip)}\"><span class=\"tip\" style=\"bottom:calc({Math.Max(h, 3)}% + 6px)\">{H(tip)}</span><div class=\"bar{cls}\" style=\"height:{h}%{(estimated[i] > 0 ? ";opacity:.55" : "")}\"></div></div>");
         }
         sb.Append($"</div><div class=\"axis\"><span>{days[0].ToString(L.T("dd/MM", "d MMM", "dd/MM"), Fr)}</span>"
-            + (estimated.Any(e => e > 0) ? $"<span>{L.T("barres pâles = estimées (paliers Epic, puis parties jouées)", "faded bars = estimated (Epic stages, then matches played)", "barras claras = estimadas (etapas de Epic, luego partidas jugadas)")}</span>" : "")
+            + (estimated.Any(e => e > 0) ? $"<span>{L.T("barres pâles = estimées (paliers de la quête + parties jouées)", "faded bars = estimated (quest stages + matches played)", "barras claras = estimadas (etapas de la misión + partidas jugadas)")}</span>" : "")
             + (perDay.Max() == 0 ? $"<span>{L.T("les jours se remplissent au fil des parties", "days fill in as you play", "los días se llenan al jugar")}</span>" : "")
             + $"<span>{L.T("aujourd'hui", "today", "hoy")}</span></div></div></section>");
 
@@ -515,9 +514,9 @@ public static class ReportWriter
             if (season.Count.Count > 0)
             {
                 sb.Append($"<div class=\"items\" style=\"padding:10px 0 8px\">{L.T($"Début de la Chasse au trésor : {L.DateTimeShort(season.Count[0].At.ToLocalTime())}.", $"Treasure Hunt started: {L.DateTimeShort(season.Count[0].At.ToLocalTime())}.", $"Inicio de la Caza del tesoro: {L.DateTimeShort(season.Count[0].At.ToLocalTime())}.")}"
-                    + (season.PaceEstimate is int p2 ? " " + L.T($"Estimation à aujourd'hui : ≈ {season.PaceRatio:0} coffres par partie (mesuré sur le début de saison, paliers et coffres rares) × {season.MatchesBefore + season.MatchesAfter} parties jouées cette saison d'après tes stats Epic = ≈ {N(p2)} coffres. Les stats Epic sont regroupées par blocs de quelques heures et ton rythme a pu changer : ça peut se tromper de 20 à 30 %.",
-                        $"Estimate for today: ≈ {season.PaceRatio:0} chests per match (measured on the start of the season, stages and rare chests) × {season.MatchesBefore + season.MatchesAfter} matches played this season from your Epic stats = ≈ {N(p2)} chests. Epic stats are grouped in blocks of a few hours and your pace may have changed: this can be off by 20–30%.",
-                        $"Estimación a hoy: ≈ {season.PaceRatio:0} cofres por partida (medido al inicio de la temporada, etapas y cofres raros) × {season.MatchesBefore + season.MatchesAfter} partidas jugadas esta temporada según tus stats de Epic = ≈ {N(p2)} cofres. Las stats de Epic se agrupan en bloques de unas horas y tu ritmo pudo cambiar: puede fallar un 20–30 %.") : "")
+                    + (season.PaceEstimate is int p2 ? " " + L.T($"Estimation à aujourd'hui : ≈ {season.PaceRatio:0} coffres par partie (mesuré sur le début de saison, paliers et coffres rares) × {season.MatchesAfter} parties jouées depuis tes 1 000 coffres, d'après tes stats Epic, + les 1 000 = ≈ {N(p2)} coffres. Les stats Epic sont regroupées par blocs de quelques heures et ton rythme a pu changer : ça peut se tromper de 20 à 30 %.",
+                        $"Estimate for today: ≈ {season.PaceRatio:0} chests per match (measured on the start of the season, stages and rare chests) × {season.MatchesAfter} matches played since your 1,000 chests, from your Epic stats, + the 1,000 = ≈ {N(p2)} chests. Epic stats are grouped in blocks of a few hours and your pace may have changed: this can be off by 20–30%.",
+                        $"Estimación a hoy: ≈ {season.PaceRatio:0} cofres por partida (medido al inicio de la temporada, etapas y cofres raros) × {season.MatchesAfter} partidas jugadas desde tus 1000 cofres, según tus stats de Epic, + los 1000 = ≈ {N(p2)} cofres. Las stats de Epic se agrupan en bloques de unas horas y tu ritmo pudo cambiar: puede fallar un 20–30 %.") : "")
                     + (season.Estimate is int e2 ? " " + L.T($"Estimation au-delà de 1 000 : à 1 000 coffres tu avais environ 1 coffre rare pour {(double)e2 / Math.Max(1, season.Rare[^1].Value):0} coffres ; tu as atteint {season.Rare[^1].Value} coffres rares le {season.EstimateAt!.Value.ToLocalTime():dd'/'MM}, soit ≈ {N(e2)} coffres. C'est une estimation.",
                         $"Estimate beyond 1,000: at 1,000 chests you had about 1 rare chest per {(double)e2 / Math.Max(1, season.Rare[^1].Value):0} chests; you reached {season.Rare[^1].Value} rare chests on {season.EstimateAt!.Value.ToLocalTime():d MMM}, so ≈ {N(e2)} chests. This is an estimate.",
                         $"Estimación más allá de 1000: con 1000 cofres tenías 1 cofre raro cada {(double)e2 / Math.Max(1, season.Rare[^1].Value):0} cofres; llegaste a {season.Rare[^1].Value} cofres raros el {season.EstimateAt!.Value.ToLocalTime():dd'/'MM}, o sea ≈ {N(e2)} cofres. Es una estimación.") : "")

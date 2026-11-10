@@ -69,6 +69,9 @@ public static class Ps5Mode
         public int? Last { get; set; }
         public bool Manual { get; set; }
         public List<Gain> History { get; set; } = new();
+        /// <summary>Cache des stats Epic : parties jouées depuis MatchStart jusqu'à la fin de chaque jour (yyyy-MM-dd).</summary>
+        public DateTime? MatchStart { get; set; }
+        public Dictionary<string, int> MatchDays { get; set; } = new();
     }
 
     public sealed record Counter(string Id, string Quest, string Objective, int Value, string State);
@@ -76,65 +79,187 @@ public static class Ps5Mode
     /// <summary>Palier de la Chasse au trésor atteint : Kind = "count" (coffres) ou "rarity" (coffres rares).</summary>
     public sealed record Milestone(string Kind, int Value, DateTime At);
 
-    /// <summary>Ce qu'on reconstruit de la saison à partir des dates des paliers.</summary>
+    /// <summary>Ce qu'on reconstruit de la saison : paliers, coffres par jour (exacts ou estimés), estimations.</summary>
     public sealed class Season
     {
         public List<Milestone> Count { get; } = new();
         public List<Milestone> Rare { get; } = new();
-        /// <summary>Coffres estimés par jour (interpolation entre les paliers).</summary>
-        public Dictionary<DateTime, double> PerDay { get; } = new();
-        /// <summary>Estimation au-delà du plafond (via le rythme des coffres rares), et sa date.</summary>
+        /// <summary>Coffres par jour vus en direct par le compteur (à la minute près).</summary>
+        public Dictionary<DateTime, double> PerDayExact { get; } = new();
+        /// <summary>Coffres par jour estimés (trous comblés d'après les parties jouées, ou au-delà du plafond).</summary>
+        public Dictionary<DateTime, double> PerDayEstimated { get; } = new();
+        /// <summary>Estimation au-delà du plafond via le rythme des coffres rares, et sa date.</summary>
         public int? Estimate { get; set; }
         public DateTime? EstimateAt { get; set; }
-        /// <summary>Estimation à aujourd'hui : coffres par partie (jusqu'à 1 000) × parties jouées depuis (stats Epic).</summary>
+        /// <summary>Estimation à aujourd'hui au-delà du plafond : coffres par partie × parties jouées (stats Epic).</summary>
         public int? PaceEstimate { get; set; }
         public double PaceRatio { get; set; }
         public int MatchesBefore { get; set; }
         public int MatchesAfter { get; set; }
+        /// <summary>Vrai si les parties jouées (stats Epic) ont servi à répartir les trous.</summary>
+        public bool UsedMatches { get; set; }
     }
 
-    private sealed record Pace(DateTime At, int Estimate, double Ratio, int Before, int After, Dictionary<DateTime, double> PerDay);
+    private sealed record Pace(DateTime At, double Ratio, int Before, int Now);
     private static Pace? _pace;
+    private static DateTime _matchesRefreshed = DateTime.MinValue;
+    private static int? _matchesToday;
+
+    // ---- Modèle de la saison --------------------------------------------------------------------------------------
+    //
+    // Points sûrs (temps, total) : début de la quête (0), chaque palier atteint, chaque gain vu par le compteur, et la
+    // valeur actuelle tant qu'elle est sous le plafond. Entre deux points sûrs, les coffres sont répartis sur les jours
+    // au prorata des parties jouées (stats Epic), ou linéairement dans le temps si les stats manquent. Deux gains vus à
+    // moins de 15 min d'intervalle sont exacts. Au-delà du plafond : coffres par partie × parties jouées.
+    // Marche pour n'importe quel compte : rien n'est propre à une saison ni à un joueur.
+
+    private sealed record Point(DateTime At, int Value, bool Tracked);
+
+    private static void ApplyModel(Season s, Counter? tracked, bool capped)
+    {
+        var points = new List<Point>();
+        points.AddRange(s.Count.Select(m => new Point(m.At, m.Value, false)));
+        if (_data.Baseline is { } b && b.Value < Cap) points.Add(new Point(b.At, b.Value, true));
+        points.AddRange(_data.History.Where(h => h.Total <= Cap).Select(h => new Point(h.At, h.Total, true)));
+        if (tracked != null && !capped && tracked.Value < Cap) points.Add(new Point(DateTime.UtcNow, tracked.Value, true));
+        points = points.OrderBy(p => p.At).ToList();
+        var clean = new List<Point>();
+        foreach (var p in points)
+        {
+            if (clean.Count > 0 && p.Value < clean[^1].Value) continue; // valeur incohérente (autre compteur) : ignorée
+            clean.Add(p);
+        }
+        if (clean.Count == 0) return;
+
+        var start = clean[0].At;
+        RefreshMatches(start);
+        s.UsedMatches = _data.MatchDays.Count > 0;
+
+        for (var i = 1; i < clean.Count; i++)
+        {
+            var (a, z) = (clean[i - 1], clean[i]);
+            var delta = z.Value - a.Value;
+            if (delta <= 0) continue;
+            if (a.Tracked && z.Tracked && z.At - a.At <= TimeSpan.FromMinutes(15))
+            {
+                var day = z.At.ToLocalTime().Date;
+                s.PerDayExact[day] = s.PerDayExact.GetValueOrDefault(day) + delta;
+                continue;
+            }
+            Spread(s.PerDayEstimated, a.At, z.At, delta, start);
+        }
+
+        if (!capped) return;
+        var last = clean[^1];
+        var pace = ComputePace(s, start, s.Count.LastOrDefault(m => m.Value >= Cap)?.At ?? last.At);
+        if (pace == null) return;
+        s.PaceRatio = pace.Ratio;
+        s.MatchesBefore = pace.Before;
+        s.MatchesAfter = Math.Max(0, pace.Now - pace.Before);
+        // Total = dernier point sûr (le plafond) + parties jouées depuis × coffres par partie.
+        var afterCap = s.MatchesAfter * pace.Ratio;
+        s.PaceEstimate = (int)(Math.Round((last.Value + afterCap) / 10) * 10);
+        // Répartition par jour selon les parties de chaque jour, recalée pour que la somme des jours = le total.
+        var raw = new List<(DateTime Day, double Matches)>();
+        for (var day = last.At.ToLocalTime().Date; day <= DateTime.Now.Date; day = day.AddDays(1))
+        {
+            var from = Max(day, last.At.ToLocalTime());
+            var to = Min(day.AddDays(1), DateTime.Now);
+            raw.Add((day, Math.Max(0, MatchesAt(to, start) - MatchesAt(from, start))));
+        }
+        var rawSum = raw.Sum(r => r.Matches);
+        foreach (var (day, n) in raw)
+        {
+            var part = rawSum > 0 ? afterCap * n / rawSum : afterCap / raw.Count;
+            if (part > 0) s.PerDayEstimated[day] = s.PerDayEstimated.GetValueOrDefault(day) + part;
+        }
+    }
+
+    private static DateTime Max(DateTime a, DateTime b) => a > b ? a : b;
+    private static DateTime Min(DateTime a, DateTime b) => a < b ? a : b;
+
+    /// <summary>Répartit <paramref name="delta"/> coffres entre deux instants, jour par jour, au prorata des parties jouées.</summary>
+    private static void Spread(Dictionary<DateTime, double> perDay, DateTime fromUtc, DateTime toUtc, int delta, DateTime start)
+    {
+        var from = fromUtc.ToLocalTime();
+        var to = toUtc.ToLocalTime();
+        var days = new List<(DateTime Day, double Matches, double Seconds)>();
+        for (var day = from.Date; day <= to.Date; day = day.AddDays(1))
+        {
+            var s0 = Max(day, from);
+            var s1 = Min(day.AddDays(1), to);
+            if (s1 <= s0) continue;
+            days.Add((day, Math.Max(0, MatchesAt(s1, start) - MatchesAt(s0, start)), (s1 - s0).TotalSeconds));
+        }
+        var totalMatches = days.Sum(d => d.Matches);
+        var totalSeconds = days.Sum(d => d.Seconds);
+        foreach (var (day, matches, seconds) in days)
+        {
+            var share = totalMatches > 0 ? matches / totalMatches : totalSeconds > 0 ? seconds / totalSeconds : 0;
+            if (share > 0) perDay[day] = perDay.GetValueOrDefault(day) + delta * share;
+        }
+    }
 
     /// <summary>
-    /// Au-delà du plafond : les stats Epic donnent les parties jouées sur une période (par blocs de quelques heures,
-    /// pas à la minute près). Coffres par partie mesurés jusqu'aux 1 000, appliqués aux parties jouées depuis.
-    /// Recalculé toutes les 10 minutes.
+    /// Parties jouées depuis <paramref name="start"/> jusqu'à la fin de chaque jour (stats Epic). Les jours de plus de
+    /// 2 jours sont gardés en cache (data.json) : Epic les range par blocs de quelques heures, les récents peuvent encore bouger.
     /// </summary>
-    private static void ApplyPace(Season s)
+    private static void RefreshMatches(DateTime start)
     {
-        var thousand = s.Count.LastOrDefault(m => m.Value >= Cap);
-        if (thousand == null) return;
-        if (_pace == null || DateTime.UtcNow - _pace.At > TimeSpan.FromMinutes(10))
+        if (_data.MatchStart != start)
         {
-            var start = s.Count[0].At;
-            var before = MatchesBetween(start, thousand.At);
-            var now = MatchesBetween(start, DateTime.UtcNow);
-            if (before is not > 0 || now == null) return;
-            var ratio = (double)Cap / before.Value;
-            // Base plus longue si possible : l'estimation par les coffres rares (jusqu'au palier 100) couvre plus de parties.
-            if (s.Estimate is int rareEst && s.EstimateAt is DateTime rareAt)
-            {
-                var atRare = MatchesBetween(start, rareAt);
-                if (atRare > before) ratio = (double)rareEst / atRare.Value;
-            }
-            var perDay = new Dictionary<DateTime, double>();
-            var prev = before.Value;
-            for (var dayEnd = thousand.At.ToLocalTime().Date.AddDays(1); dayEnd <= DateTime.Now.Date.AddDays(1); dayEnd = dayEnd.AddDays(1))
-            {
-                var cum = MatchesBetween(start, dayEnd > DateTime.Now ? DateTime.UtcNow : dayEnd.ToUniversalTime());
-                if (cum == null) break;
-                perDay[dayEnd.AddDays(-1)] = Math.Max(0, cum.Value - prev) * ratio;
-                prev = Math.Max(prev, cum.Value);
-            }
-            var after = Math.Max(0, now.Value - before.Value);
-            _pace = new Pace(DateTime.UtcNow, (int)(Math.Round(now.Value * ratio / 10) * 10), ratio, before.Value, after, perDay);
+            _data.MatchStart = start;
+            _data.MatchDays.Clear();
+            _matchesRefreshed = DateTime.MinValue;
         }
-        s.PaceEstimate = _pace.Estimate;
-        s.PaceRatio = _pace.Ratio;
-        s.MatchesBefore = _pace.Before;
-        s.MatchesAfter = _pace.After;
-        foreach (var (day, n) in _pace.PerDay) s.PerDay[day] = s.PerDay.GetValueOrDefault(day) + n;
+        if (DateTime.UtcNow - _matchesRefreshed < TimeSpan.FromMinutes(10)) return;
+        var today = DateTime.Now.Date;
+        for (var day = start.ToLocalTime().Date; day < today; day = day.AddDays(1))
+        {
+            var key = day.ToString("yyyy-MM-dd");
+            if (_data.MatchDays.ContainsKey(key) && day < today.AddDays(-2)) continue;
+            var n = MatchesBetween(start, day.AddDays(1).ToUniversalTime());
+            if (n == null) return; // stats indisponibles : on réessaiera
+            _data.MatchDays[key] = n.Value;
+        }
+        _matchesToday = MatchesBetween(start, DateTime.UtcNow);
+        _matchesRefreshed = DateTime.UtcNow;
+        Save(DataPath, _data);
+    }
+
+    /// <summary>Parties jouées entre le début et un instant (heure locale), interpolé dans la journée.</summary>
+    private static double MatchesAt(DateTime local, DateTime start)
+    {
+        var startLocal = start.ToLocalTime();
+        if (local <= startLocal) return 0;
+        var day = local.Date;
+        double Cum(DateTime d) => d < startLocal.Date ? 0
+            : d == DateTime.Now.Date ? _matchesToday ?? Cum(d.AddDays(-1))
+            : _data.MatchDays.TryGetValue(d.ToString("yyyy-MM-dd"), out var n) ? n : Cum(d.AddDays(-1));
+        var before = Cum(day.AddDays(-1));
+        var after = Math.Max(before, Cum(day));
+        var dayStart = Max(day, startLocal);
+        var dayEnd = day == DateTime.Now.Date ? DateTime.Now : day.AddDays(1);
+        var span = (dayEnd - dayStart).TotalSeconds;
+        var f = span <= 0 ? 1 : Math.Clamp((local - dayStart).TotalSeconds / span, 0, 1);
+        return before + (after - before) * f;
+    }
+
+    /// <summary>Coffres par partie, mesurés jusqu'au plafond (ou jusqu'à l'estimation par les coffres rares, plus longue).</summary>
+    private static Pace? ComputePace(Season s, DateTime start, DateTime capAt)
+    {
+        if (_pace != null && DateTime.UtcNow - _pace.At < TimeSpan.FromMinutes(10)) return _pace;
+        var before = MatchesBetween(start, capAt);
+        var now = MatchesBetween(start, DateTime.UtcNow);
+        if (before is not > 0 || now == null) return _pace;
+        var ratio = (double)Cap / before.Value;
+        if (s.Estimate is int rareEst && s.EstimateAt is DateTime rareAt)
+        {
+            var atRare = MatchesBetween(start, rareAt);
+            if (atRare > before) ratio = (double)rareEst / atRare.Value;
+        }
+        _pace = new Pace(DateTime.UtcNow, ratio, before.Value, Math.Max(now.Value, before.Value));
+        return _pace;
     }
 
     private sealed class EpicException(HttpStatusCode status, string code, string message) : Exception($"{(int)status} {code} {message}".Trim())
@@ -226,22 +351,11 @@ public static class Ps5Mode
         {
             sb.AppendLine($"{d:yyyy-MM-dd}  {MatchesBetween(d.ToUniversalTime(), d.AddDays(1).ToUniversalTime())?.ToString() ?? "erreur"}");
         }
-        var start = new DateTime(2026, 11, 1, 8, 0, 0);
-        for (var d = new DateTime(2026, 11, 2); d <= today.AddDays(1); d = d.AddDays(1))
-        {
-            sb.AppendLine($"cumul 01/11 08:00 → {d:yyyy-MM-dd}  {MatchesBetween(start.ToUniversalTime(), d.ToUniversalTime())?.ToString() ?? "erreur"}");
-        }
-        sb.AppendLine($"cumul → 03/11 12:22  {MatchesBetween(start.ToUniversalTime(), new DateTime(2026, 11, 3, 12, 22, 0).ToUniversalTime())}");
-        sb.AppendLine($"cumul → 06/11 14:16  {MatchesBetween(start.ToUniversalTime(), new DateTime(2026, 11, 6, 14, 16, 0).ToUniversalTime())}");
-        foreach (var (a, b) in new[] { (new DateTime(2026, 11, 1), DateTime.Now), (new DateTime(2026, 10, 1), DateTime.Now), (new DateTime(2025, 1, 1), DateTime.Now), (new DateTime(2026, 11, 1), new DateTime(2026, 11, 4)) })
-        {
-            sb.AppendLine($"{a:yyyy-MM-dd} → {b:yyyy-MM-dd HH:mm}  {MatchesBetween(a.ToUniversalTime(), b.ToUniversalTime())?.ToString() ?? "erreur"}");
-        }
         sb.AppendLine($"total sans fenêtre (vie entière)  {MatchesBetween(new DateTime(2017, 1, 1, 0, 0, 0, DateTimeKind.Utc), DateTime.UtcNow)}");
         try
         {
-            var st = Epic($"{StatsUrl}{_accountId}?startTime={new DateTimeOffset(new DateTime(2026, 10, 31, 0, 0, 0, DateTimeKind.Utc)).ToUnixTimeSeconds()}&endTime={DateTimeOffset.UtcNow.ToUnixTimeSeconds()}", token: _token);
-            sb.AppendLine("== parties par mode depuis le 31/10 ==");
+            var st = Epic($"{StatsUrl}{_accountId}?startTime={new DateTimeOffset(DateTime.UtcNow.AddDays(-30)).ToUnixTimeSeconds()}&endTime={DateTimeOffset.UtcNow.ToUnixTimeSeconds()}", token: _token);
+            sb.AppendLine("== parties par mode, 30 derniers jours ==");
             foreach (var (k, v) in ((JsonObject)st["stats"]!).Where(kv => kv.Key.StartsWith("br_matchesplayed_")).OrderByDescending(kv => (int)kv.Value!))
                 sb.AppendLine($"{v,5}  {k}");
         }
@@ -524,23 +638,6 @@ public static class Ps5Mode
             }
         }
 
-        // Coffres par jour : répartition linéaire entre deux paliers.
-        for (var i = 1; i < season.Count.Count; i++)
-        {
-            var (a, b) = (season.Count[i - 1], season.Count[i]);
-            var span = (b.At - a.At).TotalSeconds;
-            if (span <= 0) continue;
-            var from = a.At.ToLocalTime();
-            var to = b.At.ToLocalTime();
-            for (var day = from.Date; day <= to.Date; day = day.AddDays(1))
-            {
-                var s0 = day < from ? from : day;
-                var s1 = day.AddDays(1) > to ? to : day.AddDays(1);
-                var part = (s1 - s0).TotalSeconds / span * (b.Value - a.Value);
-                season.PerDay[day] = season.PerDay.GetValueOrDefault(day) + part;
-            }
-        }
-
         // Estimation au-delà de 1 000 : nombre de coffres par coffre rare au moment des 1 000, appliqué au dernier palier rare.
         var thousand = season.Count.LastOrDefault(m => m.Value >= Cap);
         var lastRare = season.Rare.LastOrDefault();
@@ -582,8 +679,6 @@ public static class Ps5Mode
             if (!EnsureSession()) return false;
             var profile = QueryProfile();
             _counters = FindCounters(profile);
-            _season = BuildSeason(profile);
-            ApplyPace(_season);
             var c = _counters.FirstOrDefault(x => x.Id == _data.TrackId);
             if (c != null && !_data.Manual && c.Value >= Cap)
             {
@@ -622,8 +717,11 @@ public static class Ps5Mode
                 Add($"+{g.Delta} " + L.Count(g.Delta, "coffre", "chest", "cofre") + $"  →  {g.Total}", ConsoleColor.Green);
             }
             _data.Last = c.Value;
-            Save(DataPath, _data);
             _tracked = c;
+            var season = BuildSeason(profile);
+            try { ApplyModel(season, c, Capped); } catch (Exception e) { ErrorLog.Write("PS5 model", e); }
+            _season = season;
+            Save(DataPath, _data);
             _error = null;
             _lastSync = DateTime.Now;
         }
@@ -809,9 +907,9 @@ public static class Ps5Mode
             f.Add("    " + string.Join("   ", _season.Count.Skip(1).Select(m => $"{L.N(m.Value)} ({m.At.ToLocalTime():dd'/'MM HH:mm})")), ConsoleColor.White);
             if (_season.PaceEstimate is int pace)
             {
-                f.Add(new Seg("    ≈ " + L.N(pace), gold), new Seg(L.T($"  coffres estimés aujourd'hui (≈ {_season.PaceRatio:0} par partie × {_season.MatchesBefore + _season.MatchesAfter} parties)",
-                    $"  chests estimated today (≈ {_season.PaceRatio:0} per match × {_season.MatchesBefore + _season.MatchesAfter} matches)",
-                    $"  cofres estimados hoy (≈ {_season.PaceRatio:0} por partida × {_season.MatchesBefore + _season.MatchesAfter} partidas)"), mut));
+                f.Add(new Seg("    ≈ " + L.N(pace), gold), new Seg(L.T($"  coffres estimés aujourd'hui (≈ {_season.PaceRatio:0} par partie × {_season.MatchesAfter} parties depuis les 1 000)",
+                    $"  chests estimated today (≈ {_season.PaceRatio:0} per match × {_season.MatchesAfter} matches since 1,000)",
+                    $"  cofres estimados hoy (≈ {_season.PaceRatio:0} por partida × {_season.MatchesAfter} partidas desde los 1000)"), mut));
             }
             if (_season.Estimate is int est)
             {
@@ -836,7 +934,9 @@ public static class Ps5Mode
         // Par jour (14 derniers jours avec des gains)
         f.Blank();
         f.Add("  " + L.T("PAR JOUR", "PER DAY", "POR DÍA"), ConsoleColor.Cyan);
-        var days = _data.History.GroupBy(h => h.At.ToLocalTime().Date).OrderBy(g => g.Key).TakeLast(7).Select(g => (g.Key, g.Sum(h => h.Delta))).ToList();
+        var days = _season.PerDayExact.Keys.Union(_season.PerDayEstimated.Keys).OrderBy(d => d).TakeLast(7)
+            .Select(d => (d, (int)Math.Round(_season.PerDayExact.GetValueOrDefault(d) + _season.PerDayEstimated.GetValueOrDefault(d)), _season.PerDayEstimated.GetValueOrDefault(d) >= 0.5))
+            .Where(x => x.Item2 > 0).ToList();
         if (days.Count == 0)
         {
             f.Add("    " + L.T("Les jours apparaissent au fil des parties.", "Days appear as you play.", "Los días aparecen al jugar."), mut);
@@ -844,11 +944,12 @@ public static class Ps5Mode
         else
         {
             var max = Math.Max(1, days.Max(d => d.Item2));
-            foreach (var (day, n) in days)
+            foreach (var (day, n, est) in days)
             {
-                var bar = new string('█', Math.Max(1, (int)Math.Round(30.0 * n / max)));
-                f.Add(new Seg($"    {day:dd'/'MM}  ", mut), new Seg(bar, gold), new Seg($" {n}", ConsoleColor.White));
+                var bar = new string(est ? '▒' : '█', Math.Max(1, (int)Math.Round(30.0 * n / max)));
+                f.Add(new Seg($"    {day:dd'/'MM}  ", mut), new Seg(bar, est ? ConsoleColor.DarkYellow : gold), new Seg((est ? " ≈ " : " ") + n, ConsoleColor.White));
             }
+            if (days.Any(d => d.Item3)) f.Add("    " + L.T("▒ ≈ estimé (paliers de la quête + parties jouées)", "▒ ≈ estimated (quest stages + matches played)", "▒ ≈ estimado (etapas + partidas jugadas)"), mut);
         }
 
         // Derniers gains + activité
