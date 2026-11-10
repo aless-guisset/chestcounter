@@ -80,10 +80,12 @@ public static class Ps5Mode
     public sealed class Calibration
     {
         public DateTime At { get; set; }
-        /// <summary>Parties jouées cette saison selon le joueur (Fortnite → Carrière).</summary>
+        /// <summary>Parties jouées cette saison selon le joueur (0 = garder le chiffre d'Epic).</summary>
         public int Matches { get; set; }
         /// <summary>Coffres ouverts cette saison selon le joueur (null = inconnu).</summary>
         public int? Chests { get; set; }
+        /// <summary>Ou : sa moyenne de coffres par partie (null = inconnue).</summary>
+        public double? PerMatch { get; set; }
     }
 
     public sealed record Counter(string Id, string Quest, string Objective, int Value, string State);
@@ -139,7 +141,14 @@ public static class Ps5Mode
         points.AddRange(_data.History.Where(h => h.Total <= Cap).Select(h => new Point(h.At, h.Total, true)));
         if (tracked != null && !capped && tracked.Value < Cap) points.Add(new Point(DateTime.UtcNow, tracked.Value, true));
         var cal = _data.Calib;
-        if (capped && cal?.Chests is int calChests && calChests >= Cap) points.Add(new Point(cal.At, calChests, false)); // point sûr donné par le joueur
+        if (points.Count == 0) return;
+        var start = points.Min(p => p.At);
+        _seasonStart = start;
+        RefreshMatches(start);
+        // Coffres au moment de l'étalonnage : donnés par le joueur, ou sa moyenne × ses parties.
+        var realAtCal = cal == null ? 0 : cal.Matches > 0 ? cal.Matches : MatchesAt(cal.At, start);
+        int? calChests = cal?.Chests ?? (cal?.PerMatch is double pm && realAtCal > 0 ? (int)Math.Round(pm * realAtCal) : null);
+        if (capped && calChests is int cch && cch >= Cap) points.Add(new Point(cal!.At, cch, false)); // point sûr donné par le joueur
         points = points.OrderBy(p => p.At).ToList();
         var clean = new List<Point>();
         foreach (var p in points)
@@ -148,10 +157,6 @@ public static class Ps5Mode
             clean.Add(p);
         }
         if (clean.Count == 0) return;
-
-        var start = clean[0].At;
-        _seasonStart = start;
-        RefreshMatches(start);
         s.Calib = cal;
         if (cal != null && cal.Matches > 0)
         {
@@ -177,15 +182,15 @@ public static class Ps5Mode
         if (!capped) return;
         var last = clean[^1];
         double afterCap;
-        if (cal?.Chests is int cc && cal.Matches > 0 && last.At == cal.At && last.Value == cc)
+        if (cal != null && calChests is int cc && realAtCal > 0 && last.At == cal.At && last.Value == cc)
         {
             // Étalonné : coffres par partie = les tiens, parties depuis l'étalonnage corrigées par le même facteur.
-            var ratio = (double)cc / cal.Matches;
+            var ratio = cal.PerMatch ?? cc / realAtCal;
             var after = Math.Max(0, MatchesAt(DateTime.UtcNow, start) - MatchesAt(cal.At, start)) * s.MatchScale;
             s.PaceRatio = ratio;
-            s.MatchesBefore = cal.Matches;
+            s.MatchesBefore = (int)Math.Round(realAtCal);
             s.MatchesAfter = (int)Math.Round(after);
-            s.MatchesNow = cal.Matches + s.MatchesAfter;
+            s.MatchesNow = s.MatchesBefore + s.MatchesAfter;
             afterCap = after * ratio;
         }
         else
@@ -219,46 +224,113 @@ public static class Ps5Mode
 
     private static DateTime? _seasonStart;
 
-    /// <summary>Écran d'étalonnage : le joueur donne une fois ses vrais chiffres de la saison.</summary>
+    public static string StatsUrlGg => "https://fortnite.gg/stats?player=" + Uri.EscapeDataString(_player ?? "");
+    public static string StatsUrlTracker => "https://fortnitetracker.com/profile/all/" + Uri.EscapeDataString(_player ?? "");
+
+    private static double? ParseNumber(string text)
+    {
+        var t = text.Replace(" ", "").Replace("\u00A0", "").Replace("\u202F", "").Replace(',', '.');
+        return double.TryParse(t, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var n) && n >= 0 ? n : null;
+    }
+
+    /// <summary>Écran d'étalonnage : le joueur donne une fois ses vrais chiffres de la saison (parties, puis coffres).</summary>
     private static void CalibrateScreen()
     {
-        Frames.Invalidate();
-        ConsoleUi.Screen(L.T("Étalonnage", "Calibration", "Calibración"), "PS5");
-        ConsoleUi.Text(L.T(
-            "Donne tes vrais chiffres de la saison, une seule fois : l'estimation s'en sert ensuite.\n• Parties jouées : Fortnite → Carrière → Statistiques.\n• Coffres ouverts : si tu le sais (sinon laisse vide).",
-            "Give your real numbers for the season, once: the estimate then uses them.\n• Matches played: Fortnite → Career → Stats.\n• Chests opened: if you know it (otherwise leave empty).",
-            "Da tus cifras reales de la temporada, una sola vez: la estimación las usa luego.\n• Partidas jugadas: Fortnite → Trayectoria → Estadísticas.\n• Cofres abiertos: si lo sabes (si no, déjalo vacío)."));
-        ConsoleUi.Blank();
-        if (_seasonStart is DateTime st)
-        {
-            ConsoleUi.Hint(L.T($"Epic voit ≈ {MatchesAt(DateTime.UtcNow, st):0} parties (sans celles d'aujourd'hui, publiées demain).",
-                $"Epic sees ≈ {MatchesAt(DateTime.UtcNow, st):0} matches (without today's, published tomorrow).",
-                $"Epic ve ≈ {MatchesAt(DateTime.UtcNow, st):0} partidas (sin las de hoy, publicadas mañana)."));
-        }
-        if (_data.Calib is { } c)
-        {
-            ConsoleUi.Hint(L.T($"Étalonnage actuel ({c.At.ToLocalTime():dd'/'MM HH:mm}) : {c.Matches} parties, {(c.Chests?.ToString() ?? "coffres inconnus")}. Tape « effacer » pour le supprimer.",
-                $"Current calibration ({c.At.ToLocalTime():dd'/'MM HH:mm}): {c.Matches} matches, {(c.Chests?.ToString() ?? "chests unknown")}. Type \"clear\" to remove it.",
-                $"Calibración actual ({c.At.ToLocalTime():dd'/'MM HH:mm}): {c.Matches} partidas, {(c.Chests?.ToString() ?? "cofres desconocidos")}. Escribe «borrar» para quitarla."));
-        }
-        ConsoleUi.Blank();
         _data.CalibAsked = true;
-        var m = ConsoleUi.Input(L.T("Parties jouées cette saison (vide = passer) : ", "Matches played this season (empty = skip): ", "Partidas jugadas esta temporada (vacío = omitir): ")).Trim();
-        if (m.Length > 0 && m.ToLowerInvariant() is "effacer" or "clear" or "borrar")
+        var epicMatches = _seasonStart is DateTime st ? (int)Math.Round(MatchesAt(DateTime.UtcNow, st)) : 0;
+        var title = L.T("Étalonnage", "Calibration", "Calibración");
+
+        // 1. Parties jouées
+        int? matches = null;
+        var clear = false;
+        while (matches == null && !clear)
+        {
+            Frames.Invalidate();
+            ConsoleUi.Screen(title, "1/2");
+            ConsoleUi.Text(L.T("Combien de parties as-tu jouées cette saison ?", "How many matches have you played this season?", "¿Cuántas partidas has jugado esta temporada?"), ConsoleColor.White);
+            ConsoleUi.Blank();
+            ConsoleUi.Hint(L.T($"Epic en voit ≈ {epicMatches} (sans celles d'aujourd'hui, publiées demain). Ton vrai chiffre est sur fortnite.gg ou fortnitetracker.com (saison en cours), ou dans Fortnite → Carrière.",
+                $"Epic sees ≈ {epicMatches} (without today's, published tomorrow). Your real number is on fortnite.gg or fortnitetracker.com (current season), or in Fortnite → Career.",
+                $"Epic ve ≈ {epicMatches} (sin las de hoy, publicadas mañana). Tu cifra real está en fortnite.gg o fortnitetracker.com (temporada actual), o en Fortnite → Trayectoria."));
+            if (_data.Calib is { } c)
+            {
+                ConsoleUi.Hint(L.T($"Étalonnage actuel ({c.At.ToLocalTime():dd'/'MM}) : {Describe(c)}.", $"Current calibration ({c.At.ToLocalTime():d MMM}): {Describe(c)}.", $"Calibración actual ({c.At.ToLocalTime():dd'/'MM}): {Describe(c)}."));
+            }
+            ConsoleUi.Blank();
+            var options = new List<string>
+            {
+                L.T("Entrer mon nombre de parties", "Enter my number of matches", "Escribir mi número de partidas"),
+                L.T("Voir mes parties sur fortnite.gg (navigateur)", "See my matches on fortnite.gg (browser)", "Ver mis partidas en fortnite.gg (navegador)"),
+                L.T("Voir mes parties sur fortnitetracker.com (navigateur)", "See my matches on fortnitetracker.com (browser)", "Ver mis partidas en fortnitetracker.com (navegador)"),
+                L.T($"Garder le chiffre d'Epic (≈ {epicMatches})", $"Keep Epic's number (≈ {epicMatches})", $"Mantener la cifra de Epic (≈ {epicMatches})"),
+            };
+            if (_data.Calib != null) options.Add(L.T("Effacer l'étalonnage", "Clear the calibration", "Borrar la calibración"));
+            switch (ConsoleUi.Menu(options, 0, Keys.MenuHelp, escapeIndex: 3))
+            {
+                case 0:
+                    if (ParseNumber(ConsoleUi.Input(L.T("Parties jouées cette saison : ", "Matches played this season: ", "Partidas jugadas esta temporada: "))) is double m && m >= 1)
+                        matches = (int)Math.Round(m);
+                    break;
+                case 1: OpenUrl(StatsUrlGg); break;
+                case 2: OpenUrl(StatsUrlTracker); break;
+                case 3: matches = 0; break;
+                default: clear = true; break;
+            }
+        }
+        if (clear)
         {
             _data.Calib = null;
+            Done(L.T("Étalonnage effacé.", "Calibration cleared.", "Calibración borrada."));
+            return;
         }
-        else if (int.TryParse(m.Replace(" ", "").Replace("\u00A0", ""), out var matches) && matches > 0)
+
+        // 2. Coffres
+        Frames.Invalidate();
+        ConsoleUi.Screen(title, "2/2");
+        ConsoleUi.Text(L.T("Et tes coffres ?", "And your chests?", "¿Y tus cofres?"), ConsoleColor.White);
+        ConsoleUi.Blank();
+        var auto = _season.PaceRatio > 0 ? _season.PaceRatio : 0;
+        var choice = ConsoleUi.Menu(new[]
         {
-            var ch = ConsoleUi.Input(L.T("Coffres ouverts cette saison (vide = je ne sais pas) : ", "Chests opened this season (empty = I don't know): ", "Cofres abiertos esta temporada (vacío = no lo sé): ")).Trim();
-            int? chests = int.TryParse(ch.Replace(" ", "").Replace("\u00A0", ""), out var n) && n > 0 ? n : null;
-            _data.Calib = new Calibration { At = DateTime.UtcNow, Matches = matches, Chests = chests };
-            ConsoleUi.Text(L.T("Enregistré.", "Saved.", "Guardado."), ConsoleColor.Green);
-            Thread.Sleep(800);
-        }
+            L.T("Entrer mon nombre total de coffres de la saison", "Enter my total chests this season", "Escribir mi total de cofres de la temporada"),
+            L.T("Entrer ma moyenne de coffres par partie", "Enter my average chests per match", "Escribir mi media de cofres por partida"),
+            L.T($"Je ne sais pas (0) : estimation automatique (≈ {auto:0} par partie)", $"I don't know (0): automatic estimate (≈ {auto:0} per match)", $"No lo sé (0): estimación automática (≈ {auto:0} por partida)"),
+        }, 2, Keys.MenuHelp, escapeIndex: 2);
+        int? chests = null;
+        double? perMatch = null;
+        if (choice == 0 && ParseNumber(ConsoleUi.Input(L.T("Coffres ouverts cette saison : ", "Chests opened this season: ", "Cofres abiertos esta temporada: "))) is double t && t >= 1)
+            chests = (int)Math.Round(t);
+        if (choice == 1 && ParseNumber(ConsoleUi.Input(L.T("Coffres par partie (ex. 12,5) : ", "Chests per match (e.g. 12.5): ", "Cofres por partida (ej. 12,5): "))) is double a && a > 0)
+            perMatch = Math.Round(a, 2);
+
+        _data.Calib = matches > 0 || chests != null || perMatch != null
+            ? new Calibration { At = DateTime.UtcNow, Matches = matches ?? 0, Chests = chests, PerMatch = perMatch }
+            : null;
+        Done(_data.Calib == null ? L.T("Rien à enregistrer : estimation automatique.", "Nothing to save: automatic estimate.", "Nada que guardar: estimación automática.")
+            : L.T($"Enregistré : {Describe(_data.Calib)}.", $"Saved: {Describe(_data.Calib)}.", $"Guardado: {Describe(_data.Calib)}."));
+    }
+
+    private static void Done(string message)
+    {
+        ConsoleUi.Blank();
+        ConsoleUi.Text(message, ConsoleColor.Green);
+        Thread.Sleep(1200);
         Save(DataPath, _data);
         _nextPoll = DateTime.MinValue;
         Frames.Invalidate();
+    }
+
+    /// <summary>« 200 parties · 12,5 coffres par partie » etc.</summary>
+    public static bool HasChests(Calibration? c) => c != null && (c.Chests != null || c.PerMatch != null);
+
+    public static string Describe(Calibration c)
+    {
+        var parts = new List<string>();
+        parts.Add(c.Matches > 0 ? $"{L.N(c.Matches)} " + L.T("parties", "matches", "partidas") : L.T("parties d'Epic", "Epic's matches", "partidas de Epic"));
+        if (c.Chests is int ch) parts.Add($"{L.N(ch)} " + L.T("coffres", "chests", "cofres"));
+        else if (c.PerMatch is double pm) parts.Add(pm.ToString("0.##", L.Culture) + " " + L.T("coffres par partie", "chests per match", "cofres por partida"));
+        else parts.Add(L.T("coffres estimés automatiquement", "chests estimated automatically", "cofres estimados automáticamente"));
+        return string.Join(" · ", parts);
     }
 
     private static DateTime Max(DateTime a, DateTime b) => a > b ? a : b;
@@ -568,7 +640,7 @@ public static class Ps5Mode
         if (Capped && _season.PaceEstimate is int est)
         {
             row(L.T("Total", "Total", "Total"), new[] { new Seg("≈ " + L.Count(est, "coffre", "chest", "cofre"), ConsoleColor.Yellow),
-                new Seg($"  ·  Epic {L.N(total.Value)}+  ·  " + L.T($"≈ {_season.PaceRatio:0} par partie", $"≈ {_season.PaceRatio:0} per match", $"≈ {_season.PaceRatio:0} por partida"), mut) });
+                new Seg($"  ·  Epic {L.N(total.Value)}+  ·  " + L.T($"≈ {_season.PaceRatio:0.#} par partie", $"≈ {_season.PaceRatio:0.#} per match", $"≈ {_season.PaceRatio:0.#} por partida"), mut) });
         }
         else
         {
@@ -594,7 +666,7 @@ public static class Ps5Mode
         }
         if (_data.Calib is { } c)
         {
-            row(L.T("Étalonnage", "Calibration", "Calibración"), new[] { new Seg($"{c.Matches} " + L.T("parties", "matches", "partidas") + (c.Chests is int cc ? $" · {L.N(cc)} " + L.T("coffres", "chests", "cofres") : "") + $"  ({c.At.ToLocalTime():dd'/'MM})", mut) });
+            row(L.T("Étalonnage", "Calibration", "Calibración"), new[] { new Seg(Describe(c) + $"  ({c.At.ToLocalTime():dd'/'MM})", mut) });
         }
     }
 
