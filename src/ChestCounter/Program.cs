@@ -35,7 +35,7 @@ AppDomain.CurrentDomain.UnhandledException += (_, e) =>
 };
 
 // ---- Arguments ---------------------------------------------------------------------------
-string? dataDir = null, demosArg = null, langArg = null;
+string? dataDir = null, demosArg = null, langArg = null, platformArg = null;
 var once = false;
 var reset = false;
 var auto = false;          // opened by the standby when Fortnite started: closes itself after Fortnite
@@ -53,6 +53,8 @@ for (var i = 0; i < args.Length; i++)
         case "--overlay-preview": previewPath = args[++i]; break;
         case "--auto": auto = true; break;
         case "--after-update": afterUpdate = true; break;
+        case "--ps5": platformArg = "console"; break;
+        case "--pc": platformArg = "pc"; break;
         case "-h":
         case "--help":
             var langIndex = Array.IndexOf(args, "--lang");
@@ -107,11 +109,6 @@ if (args.Contains("--ps5-stats"))
 if (args.Contains("--ps5-quests"))
 {
     return Ps5Mode.DumpQuests(dataDir);
-}
-if (args.Contains("--ps5"))
-{
-    L.Set(L.Normalize(langArg) ?? store.LoadConfig()?.Language ?? L.SystemDefault);
-    return Ps5Mode.Run(dataDir, store.LoadConfig());
 }
 var interactive = ConsoleUi.Interactive;
 if (interactive && !once && previewPath == null)
@@ -168,6 +165,34 @@ if (L.Normalize(config.Language) == null)
     }
 }
 L.Set(config.Language);
+if (platformArg != null) config.Platform = platformArg;
+if (config.Platform is not ("pc" or "console"))
+{
+    // Sur quoi on joue : PC (replays) ou console (compteur du compte Epic). Demandé une fois.
+    var hasReplays = Directory.Exists(string.IsNullOrWhiteSpace(config.DemosFolder)
+        ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "FortniteGame", "Saved", "Demos")
+        : config.DemosFolder);
+    if (interactive && previewPath == null && !once)
+    {
+        ConsoleUi.Screen(L.T("Compteur de coffres Fortnite", "Fortnite Chest Counter", "Contador de cofres de Fortnite"), firstRun ? "1/5" : null);
+        ConsoleUi.Text(L.T("Sur quoi tu joues ?", "What do you play on?", "¿En qué juegas?"), ConsoleColor.White);
+        ConsoleUi.Blank();
+        ConsoleUi.Hint(L.T("PC : coffres comptés un par un dans tes replays. Console : les replays restent dans la console, le compteur lit ton compte Epic.",
+            "PC: chests counted one by one from your replays. Console: replays stay on the console, the counter reads your Epic account.",
+            "PC: cofres contados uno a uno en tus repeticiones. Consola: las repeticiones se quedan en la consola, el contador lee tu cuenta Epic."));
+        ConsoleUi.Blank();
+        config.Platform = ConsoleUi.Menu(new[]
+        {
+            L.T("PC", "PC", "PC"),
+            L.T("Console (PS5, Xbox, Switch)", "Console (PS5, Xbox, Switch)", "Consola (PS5, Xbox, Switch)"),
+        }, hasReplays ? 0 : 1, Keys.MenuHelp) == 1 ? "console" : "pc";
+    }
+    else
+    {
+        config.Platform = hasReplays ? "pc" : "console";
+    }
+    if (!firstRun) store.SaveConfig(config);
+}
 var appName = L.T("Compteur de coffres Fortnite", "Fortnite Chest Counter", "Contador de cofres de Fortnite");
 ConsoleUi.SetTitle($"{appName} {AppInfo.VersionText}");
 
@@ -220,7 +245,11 @@ var reportOpened = false;
 // ---- First launch: setup screens ----------------------------------------------------------
 if (firstRun && interactive)
 {
-    // Step 2: the replays folder.
+    // Step 2: the replays folder (PC only).
+    var existing = new List<FileInfo>();
+    var analyzeNow = false;
+    if (!config.IsConsole)
+    {
     ConsoleUi.Screen(appName, "2/5");
     ConsoleUi.Text(L.T("Tes replays", "Your replays", "Tus repeticiones"), ConsoleColor.White);
     ConsoleUi.Blank();
@@ -258,8 +287,7 @@ if (firstRun && interactive)
     ConsoleUi.Blank();
 
     // Replays already on the PC.
-    var existing = tracker.UnprocessedFiles().Where(f => ReplayHeaderProbe.IsLive(f.FullName) != true).ToList();
-    var analyzeNow = false;
+    existing = tracker.UnprocessedFiles().Where(f => ReplayHeaderProbe.IsLive(f.FullName) != true).ToList();
     if (existing.Count > 0)
     {
         var present = L.Count(existing.Count, "replay est déjà présent", "replays sont déjà présents", "replay is already on your PC", "replays are already on your PC",
@@ -278,6 +306,7 @@ if (firstRun && interactive)
     else
     {
         ConsoleUi.WaitEnter(L.T("Entrée pour continuer", "Enter to continue", "Intro para continuar"));
+    }
     }
     store.SaveConfig(config);
 
@@ -396,6 +425,20 @@ if (once)
     return 0;
 }
 
+// ---- Console (PS5…) : moteur du compte Epic --------------------------------------------------
+void StartConsoleEngine()
+{
+    Ps5Mode.Init(dataDir);
+    if (!Ps5Mode.HasAuth && interactive)
+    {
+        Ps5Mode.Login(); // une seule fois ; sinon « Se connecter à Epic » dans l'accueil
+    }
+}
+if (config.IsConsole)
+{
+    StartConsoleEngine();
+}
+
 // ---- Main screen ---------------------------------------------------------------------------
 // One screen, redrawn in place: tabs (home / settings / help), a menu driven by the arrow keys, and an activity
 // area that shows what the counter prints (captured from Console.Out).
@@ -482,7 +525,7 @@ if (OperatingSystem.IsWindows())
 }
 
 // Nothing to read yet: explain why, so that a new user is not left wondering.
-if (!tracker.ReplayFiles().Any())
+if (!config.IsConsole && !tracker.ReplayFiles().Any())
 {
     Console.ForegroundColor = ConsoleColor.DarkYellow;
     Console.WriteLine(Directory.Exists(config.DemosFolder)
@@ -505,9 +548,9 @@ if (backlog > 1)
     ReportWriter.Progress = new ScanProgress(0, backlog);
 }
 ReportWriter.WriteAll(store, config, data);
-if (config.OpenReportOnStart && !reportOpened && !auto)
+if (config.OpenReportOnStart && !reportOpened && !auto && !config.IsConsole)
 {
-    Open(store.ReportPath);
+    Open(store.ReportPath); // console : le rapport du compte Epic s'ouvre après la première synchro
 }
 if (backlog > 0)
 {
@@ -524,7 +567,7 @@ if (auto && OperatingSystem.IsWindows() && !(config.MinimizeToTray && interactiv
 }
 
 // New version on GitHub (checked in the background; the only network access of the tool).
-if (config.UpdateMode != "off")
+if (AppInfo.UpdatesEnabled && config.UpdateMode != "off")
 {
     _ = Task.Run(async () =>
     {
@@ -543,7 +586,7 @@ Console.CancelKeyPress += (_, e) => { e.Cancel = true; quit = true; wake.Set(); 
 if (interactive && OperatingSystem.IsWindows())
 {
     Tray.Enabled = config.MinimizeToTray;
-    Tray.OpenReport = () => Open(store.ReportPath);
+    Tray.OpenReport = () => { if (config.IsConsole) Ps5Mode.OpenReport(); else Open(store.ReportPath); };
     Tray.Quit = () => { quit = true; wake.Set(); };
     Tray.Start();
     if (auto && config.MinimizeToTray && Tray.Available)
@@ -596,6 +639,15 @@ while (!quit)
     if (auto && OperatingSystem.IsWindows())
     {
         CheckAutoClose();
+    }
+
+    if (config.IsConsole && Ps5Mode.Initialized)
+    {
+        Ps5Mode.Tick(config.OpenReportOnStart && !auto);
+        if (interactive && Ps5Mode.WantsCalibration && !Ps5Mode.Busy)
+        {
+            SubScreen(Ps5Mode.Calibrate);
+        }
     }
 
     var pendingUpdate = Volatile.Read(ref update);
@@ -700,8 +752,22 @@ List<(string Label, Action Run, string? About)> Items()
     switch (tab)
     {
         case 0:
+            if (config.IsConsole && !Ps5Mode.HasAuth)
+            {
+                list.Add(Item(L.T("Se connecter à Epic", "Sign in to Epic", "Conectarse a Epic"), () => SubScreen(() => Ps5Mode.Login()),
+                    L.T("Une seule fois : le compteur lit ensuite tes coffres sur ton compte Epic (lecture seule).", "Only once: the counter then reads your chests from your Epic account (read only).", "Una sola vez: el contador lee luego tus cofres en tu cuenta Epic (solo lectura).")));
+            }
             list.Add(Item(L.T("Ouvrir le rapport (statistiques détaillées)", "Open the report (detailed statistics)", "Abrir el informe (estadísticas detalladas)"),
-                () => Open(store.ReportPath)));
+                () => { if (config.IsConsole) Ps5Mode.OpenReport(); else Open(store.ReportPath); }));
+            if (config.IsConsole && Ps5Mode.HasAuth)
+            {
+                list.Add(Item(L.T("Actualiser maintenant", "Refresh now", "Actualizar ahora"), Ps5Mode.RefreshNow,
+                    L.T("Relit ton compte Epic tout de suite (sinon toutes les minutes).", "Reads your Epic account right now (otherwise every minute).", "Lee tu cuenta Epic ahora mismo (si no, cada minuto).")));
+                list.Add(Item(L.T("Étalonner (mes vrais chiffres : parties, coffres)", "Calibrate (my real numbers: matches, chests)", "Calibrar (mis cifras reales: partidas, cofres)"), () => SubScreen(Ps5Mode.Calibrate),
+                    L.T("Une fois : ton nombre de parties de la saison (Carrière dans Fortnite) et tes coffres si tu les connais. L'estimation au-delà de 1 000 s'en sert.",
+                        "Once: your number of matches this season (Career in Fortnite) and your chests if you know them. The estimate beyond 1,000 uses them.",
+                        "Una vez: tus partidas de la temporada (Trayectoria en Fortnite) y tus cofres si los sabes. La estimación más allá de 1000 los usa.")));
+            }
             if (OperatingSystem.IsWindows() && NativeOverlay.IsRunning)
             {
                 list.Add(Item(NativeOverlay.IsVisible ? L.T("Masquer l'overlay", "Hide the overlay", "Ocultar el overlay") : L.T("Afficher l'overlay", "Show the overlay", "Mostrar el overlay"),
@@ -728,7 +794,7 @@ List<(string Label, Action Run, string? About)> Items()
                     ? Item(L.T("Voir les nouveautés", "See what's new", "Ver las novedades"), () => notesHidden = false)
                     : Item(L.T("Plus tard (masquer les nouveautés)", "Later (hide what's new)", "Más tarde (ocultar las novedades)"), () => notesHidden = true));
             }
-            else if (config.UpdateMode != "off")
+            else if (AppInfo.UpdatesEnabled && config.UpdateMode != "off")
             {
                 list.Add(Item(L.T("Rechercher une mise à jour", "Check for updates", "Buscar actualizaciones"), CheckForUpdate));
             }
@@ -751,6 +817,24 @@ List<(string Label, Action Run, string? About)> Items()
                 L.T("Langue du compteur, du rapport et de l'overlay. Entrée pour passer à la suivante.",
                     "Language of the counter, the report and the overlay. Enter for the next one.",
                     "Idioma del contador, del informe y del overlay. Intro para pasar al siguiente.")));
+            list.Add(Item($"{L.T("Plateforme", "Platform", "Plataforma")} : {(config.IsConsole ? L.T("console (PS5, Xbox, Switch)", "console (PS5, Xbox, Switch)", "consola (PS5, Xbox, Switch)") : "PC")}", () =>
+                {
+                    config.Platform = config.IsConsole ? "pc" : "console";
+                    if (config.IsConsole) SubScreen(StartConsoleEngine);
+                    Console.WriteLine(config.IsConsole
+                        ? L.T("Plateforme : console. Les coffres viennent de ton compte Epic.", "Platform: console. Chests come from your Epic account.", "Plataforma: consola. Los cofres vienen de tu cuenta Epic.")
+                        : L.T("Plateforme : PC. Les coffres viennent de tes replays.", "Platform: PC. Chests come from your replays.", "Plataforma: PC. Los cofres vienen de tus repeticiones."));
+                },
+                L.T("PC : coffres comptés un par un dans tes replays. Console : les replays restent dans la console, le compteur lit ton compte Epic (exact jusqu'à 1 000, estimé au-delà). Entrée pour changer.",
+                    "PC: chests counted one by one from your replays. Console: replays stay on the console, the counter reads your Epic account (exact up to 1,000, estimated beyond). Enter to switch.",
+                    "PC: cofres contados uno a uno en tus repeticiones. Consola: las repeticiones se quedan en la consola, el contador lee tu cuenta Epic (exacto hasta 1000, estimado después). Intro para cambiar.")));
+            if (config.IsConsole && Ps5Mode.HasAuth)
+            {
+                list.Add(Item(L.T("Compteur Epic suivi", "Tracked Epic counter", "Contador Epic seguido"), () => SubScreen(Ps5Mode.ChooseCounterScreen),
+                    L.T("Par défaut la Chasse au trésor. À changer seulement si un autre compteur de coffres apparaît.", "The Treasure Hunt by default. Only change it if another chest counter shows up.", "La Caza del tesoro por defecto. Cámbialo solo si aparece otro contador de cofres.")));
+                list.Add(Item(L.T($"Se déconnecter d'Epic ({Ps5Mode.Player})", $"Sign out of Epic ({Ps5Mode.Player})", $"Cerrar sesión de Epic ({Ps5Mode.Player})"), Ps5Mode.SignOut,
+                    L.T("Supprime la connexion enregistrée et la révoque chez Epic.", "Deletes the saved sign-in and revokes it at Epic.", "Borra la conexión guardada y la revoca en Epic.")));
+            }
             if (OperatingSystem.IsWindows())
             {
                 list.Add(Item($"{L.T("Overlay en jeu", "In-game overlay", "Overlay en el juego")} : {(config.ShowOverlay ? L.T("activé", "on", "activado") : L.T("désactivé", "off", "desactivado"))}",
@@ -794,7 +878,7 @@ List<(string Label, Action Run, string? About)> Items()
             list.Add(Item($"{L.T("Ouvrir le rapport au démarrage", "Open the report at startup", "Abrir el informe al iniciar")} : {YesNo(config.OpenReportOnStart)}",
                 () => config.OpenReportOnStart = !config.OpenReportOnStart,
                 L.T("Ouvre le rapport dans ton navigateur à chaque lancement du compteur.", "Opens the report in your browser each time the counter starts.", "Abre el informe en tu navegador cada vez que se inicia el contador.")));
-            if (OperatingSystem.IsWindows())
+            if (OperatingSystem.IsWindows() && !config.IsConsole)
             {
                 list.Add(Item($"{L.T("Ouvrir avec Fortnite", "Open with Fortnite", "Abrir con Fortnite")} : {YesNo(config.StartWithFortnite)}", ToggleStartWithFortnite,
                     L.T("Un petit processus invisible attend Fortnite et ouvre le compteur, qui se ferme après. Il reste actif quand tu quittes le compteur : mets « non » avant de supprimer ou déplacer ChestCounter.exe.",
@@ -807,11 +891,13 @@ List<(string Label, Action Run, string? About)> Items()
                 "off" => L.T("désactivées", "off", "desactivadas"),
                 _ => L.T("proposées", "offered", "propuestas"),
             };
+            if (AppInfo.UpdatesEnabled)
             list.Add(Item($"{L.T("Mises à jour", "Updates", "Actualizaciones")} : {updates}",
                 () => config.UpdateMode = config.UpdateMode switch { "prompt" => "auto", "auto" => "off", _ => "prompt" },
                 L.T("Vérifiées sur GitHub au démarrage (le seul accès réseau de l'outil). Proposées : les nouveautés s'affichent et tu choisis. Automatiques : installées entre deux parties.",
                     "Checked on GitHub at startup (the only network access of the tool). Offered: what's new is shown and you choose. Automatic: installed between two matches.",
                     "Se comprueban en GitHub al iniciar (único acceso a la red). Propuestas: se muestran las novedades y tú eliges. Automáticas: se instalan entre dos partidas.")));
+            if (!config.IsConsole)
             list.Add(Item($"{L.T("Dossier des replays", "Replays folder", "Carpeta de repeticiones")} : {config.DemosFolder}", ChangeDemosFolder,
                 L.T("Là où Fortnite enregistre ses replays. À changer seulement si tu l'as déplacé. Entrée pour le modifier.",
                     "Where Fortnite saves its replays. Only change it if you moved it. Enter to edit.",
@@ -837,6 +923,19 @@ List<(string Label, Action Run, string? About)> Items()
     return list;
 }
 
+// A full screen of its own (login, calibration…): the dashboard is not redrawn over it meanwhile.
+void SubScreen(Action screen)
+{
+    dashboard = false;
+    try { screen(); }
+    finally
+    {
+        dashboard = true;
+        try { Console.Clear(); } catch { }
+        Frames.Invalidate();
+    }
+}
+
 string[] TabNames() => new[]
 {
     L.T("Accueil", "Home", "Inicio"),
@@ -855,7 +954,8 @@ void Draw()
     var width = ConsoleUi.Width;
     var f = new Frame();
     f.Blank();
-    f.Add(new Seg($"  {appName}", ConsoleColor.Yellow), new Seg($"   v{AppInfo.VersionText}", ConsoleColor.DarkGray));
+    f.Add(new Seg($"  {appName}", ConsoleColor.Yellow), new Seg($"   v{AppInfo.VersionText} · ", ConsoleColor.DarkGray),
+        new Seg(config.IsConsole ? L.T("console", "console", "consola") : "PC", ConsoleColor.Cyan));
     f.Add("  " + new string('─', Math.Min(width - 4, 76)), ConsoleColor.DarkGray);
 
     // Tabs.
@@ -933,8 +1033,15 @@ void DrawHome(Frame f, int noteRoom)
     var matches = view.Matches;
     var profile = Profiles.Current(data, config);
     var profiles = Profiles.List(data);
-    var labelWidth = new[] { L.T("Profil", "Profile", "Perfil"), L.T("État", "Status", "Estado"), L.T("Dernière partie", "Last match", "Última partida") }.Max(x => x.Length) + 3;
+    var labelWidth = new[] { L.T("Profil", "Profile", "Perfil"), L.T("État", "Status", "Estado"), L.T("Dernière partie", "Last match", "Última partida"), L.T("Aujourd'hui", "Today", "Hoy"), L.T("Étalonnage", "Calibration", "Calibración") }.Max(x => x.Length) + 3;
     void Row(string label, params Seg[] value) => f.Add(new[] { new Seg("  " + label.PadRight(labelWidth), ConsoleColor.DarkGray) }.Concat(value).ToArray());
+
+    if (config.IsConsole)
+    {
+        if (Ps5Mode.Initialized) Ps5Mode.DrawHome((label, value) => Row(label, value));
+        f.Blank();
+        return;
+    }
 
     Row(L.T("Profil", "Profile", "Perfil"), new Seg(profile?.Name ?? L.T("créé à ta première partie", "created with your first match", "se crea con tu primera partida"), ConsoleColor.White),
         new Seg(profiles.Count >= 2 ? L.T($"   ({profiles.Count} comptes sur ce PC)", $"   ({profiles.Count} accounts on this PC)", $"   ({profiles.Count} cuentas en este PC)") : "", ConsoleColor.DarkGray));
@@ -1354,6 +1461,11 @@ static void ChooseProfile(TrackerData d, Config c, Store s)
 
 static void UpdateOverlay(Store store, Config config, TrackerData d, MatchRecord? live, bool inProgress)
 {
+    if (config.IsConsole)
+    {
+        if (Ps5Mode.Initialized) Ps5Mode.UpdateOverlay();
+        return;
+    }
     var view = OverlayModel.Build(Profiles.View(d, config), live, inProgress);
     ReportWriter.WriteOverlay(store, view);
     if (OperatingSystem.IsWindows() && NativeOverlay.IsRunning)

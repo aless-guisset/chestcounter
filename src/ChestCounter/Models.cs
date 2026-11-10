@@ -91,6 +91,10 @@ public sealed class Config
 
     /// <summary>"prompt" (offer new versions), "auto" (install them) or "off" (never check GitHub).</summary>
     public string UpdateMode { get; set; } = "prompt";
+
+    /// <summary>"pc" (replays du PC) ou "console" (PS5, Xbox, Switch : compteur du compte Epic). Vide = pas encore choisi.</summary>
+    public string Platform { get; set; } = "";
+    public bool IsConsole => Platform == "console";
     public bool OpenReportOnStart { get; set; } = true;
     public bool ShowOverlay { get; set; } = true;
 

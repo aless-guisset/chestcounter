@@ -259,7 +259,6 @@ public static class Ps5Mode
         Save(DataPath, _data);
         _nextPoll = DateTime.MinValue;
         Frames.Invalidate();
-        ConsoleUi.Screen("Chest Counter · PS5");
     }
 
     private static DateTime Max(DateTime a, DateTime b) => a > b ? a : b;
@@ -386,7 +385,6 @@ public static class Ps5Mode
     private static DateTime? _lastSync;
     private static string? _error;
     private static DateTime _nextPoll = DateTime.MinValue;
-    private static readonly List<(DateTime At, string Text, ConsoleColor Color)> Log = new();
 
     /// <summary>--ps5-quests : écrit les attributs bruts des quêtes Chasse au trésor (dates de palier) dans ps5\\quests.txt.</summary>
     public static int DumpQuests(string dataDir)
@@ -459,38 +457,144 @@ public static class Ps5Mode
         return 0;
     }
 
-    private static Config? _config;
+    // ---- Moteur, piloté par l'écran principal de ChestCounter (plateforme « console ») -----------------------------
 
-    public static int Run(string dataDir, Config? config = null)
+    private static Task<bool>? _polling;
+    public static bool Initialized { get; private set; }
+    public static string ReportFile => ReportPath;
+    public static string Folder => _folder;
+    public static bool HasAuth => Initialized && File.Exists(AuthPath);
+    public static bool Busy => _polling != null;
+    public static string? Player => _player;
+    /// <summary>Proposé une fois, au premier lancement au-dessus du plafond.</summary>
+    public static bool WantsCalibration => Capped && _data.Calib == null && !_data.CalibAsked;
+
+    public static void Init(string dataDir)
     {
-        _config = config;
+        if (Initialized) return;
         _folder = Path.Combine(dataDir, "ps5");
         Directory.CreateDirectory(_folder);
-        using var instance = new Mutex(false, AppInfo.InstanceMutexFor(dataDir) + ".ps5");
-        if (!instance.WaitOne(0))
-        {
-            ConsoleUi.Text(L.T("Le compteur PS5 est déjà ouvert : regarde dans la barre des tâches.",
-                "The PS5 counter is already open: look in the taskbar.",
-                "El contador PS5 ya está abierto: búscalo en la barra de tareas."), ConsoleColor.Yellow);
-            Thread.Sleep(5000);
-            return 0;
-        }
-        ConsoleUi.SetTitle("Chest Counter · PS5");
-        ConsoleUi.EnsureSize(100, 40);
         ImportFromNodeTool();
         _data = Load<Ps5Data>(DataPath) ?? new Ps5Data();
+        _player = Load<AuthFile>(AuthPath)?.DisplayName;
+        Initialized = true;
+    }
 
-        while (true)
+    /// <summary>À appeler souvent depuis la boucle principale. Retourne vrai si l'écran doit être redessiné.</summary>
+    public static bool Tick(bool openReportOnFirstSync)
+    {
+        if (!HasAuth) return false;
+        if (_polling == null && DateTime.Now >= _nextPoll)
         {
-            if (Load<AuthFile>(AuthPath) == null && !LoginScreen())
-            {
-                return 0;
-            }
-            var result = MainScreen();
-            if (result != Exit.Relogin)
-            {
-                return 0;
-            }
+            _polling = Task.Run(Poll);
+            return true;
+        }
+        if (_polling is not { IsCompleted: true }) return false;
+        var ok = _polling.Result;
+        _polling = null;
+        _nextPoll = DateTime.Now + PollEvery;
+        WriteReport();
+        UpdateOverlay();
+        if (!ok)
+        {
+            Say(L.T("La connexion Epic n'est plus valide : choisis « Se connecter à Epic ».", "The Epic sign-in is no longer valid: choose \"Sign in to Epic\".", "La conexión Epic ya no es válida: elige «Conectarse a Epic»."), ConsoleColor.Yellow);
+        }
+        else if (openReportOnFirstSync && !_reportOpened)
+        {
+            _reportOpened = true;
+            OpenUrl(ReportPath);
+        }
+        return true;
+    }
+
+    public static void RefreshNow()
+    {
+        if (_polling == null) _nextPoll = DateTime.MinValue;
+    }
+
+    public static bool Login()
+    {
+        var ok = LoginScreen();
+        Frames.Invalidate();
+        if (ok) RefreshNow();
+        return ok;
+    }
+
+    public static void SignOut()
+    {
+        _polling?.Wait();
+        _polling = null;
+        Logout();
+        _tracked = null;
+        _counters = new();
+        _season = new();
+        Say(L.T("Déconnecté d'Epic (connexion révoquée).", "Signed out of Epic (sign-in revoked).", "Sesión de Epic cerrada (conexión revocada)."), ConsoleColor.Yellow);
+    }
+
+    public static void OpenReport()
+    {
+        WriteReport();
+        OpenUrl(ReportPath);
+    }
+
+    public static void Calibrate()
+    {
+        if (!Busy) CalibrateScreen();
+    }
+
+    public static void ChooseCounterScreen()
+    {
+        if (!Busy) ChooseCounter();
+    }
+
+    /// <summary>Lignes de l'accueil (plateforme console).</summary>
+    public static void DrawHome(Action<string, Seg[]> row)
+    {
+        var mut = ConsoleColor.Gray;
+        if (!HasAuth)
+        {
+            row(L.T("Compte", "Account", "Cuenta"), new[] { new Seg(L.T("pas connecté à Epic", "not signed in to Epic", "sin conexión a Epic"), ConsoleColor.DarkYellow) });
+            row(L.T("État", "Status", "Estado"), new[] { new Seg(L.T("Choisis « Se connecter à Epic » ci-dessous (une seule fois).", "Choose \"Sign in to Epic\" below (only once).", "Elige «Conectarse a Epic» abajo (una sola vez)."), ConsoleColor.DarkYellow) });
+            return;
+        }
+        row(L.T("Compte", "Account", "Cuenta"), new[] { new Seg(_player ?? "…", ConsoleColor.White), new Seg("   " + L.T("console · compte Epic", "console · Epic account", "consola · cuenta Epic"), ConsoleColor.DarkGray) });
+        var next = _nextPoll > DateTime.Now ? (int)(_nextPoll - DateTime.Now).TotalSeconds : 0;
+        row(L.T("État", "Status", "Estado"), Busy ? new[] { new Seg(L.T("synchro avec Epic…", "syncing with Epic…", "sincronizando con Epic…"), ConsoleColor.Cyan) }
+            : _error != null ? new[] { new Seg("✖ " + _error, ConsoleColor.Red) }
+            : _lastSync != null ? new[] { new Seg("● " + L.T("connecté", "connected", "conectado"), ConsoleColor.Green), new Seg(L.T($"  ·  synchro {_lastSync:HH:mm:ss}, prochaine dans {next} s", $"  ·  synced {_lastSync:HH:mm:ss}, next in {next} s", $"  ·  sincronizado {_lastSync:HH:mm:ss}, próxima en {next} s"), mut) }
+            : new[] { new Seg("…", mut) });
+        var total = _tracked?.Value;
+        if (total == null) return;
+        if (Capped && _season.PaceEstimate is int est)
+        {
+            row(L.T("Total", "Total", "Total"), new[] { new Seg("≈ " + L.Count(est, "coffre", "chest", "cofre"), ConsoleColor.Yellow),
+                new Seg($"  ·  Epic {L.N(total.Value)}+  ·  " + L.T($"≈ {_season.PaceRatio:0} par partie", $"≈ {_season.PaceRatio:0} per match", $"≈ {_season.PaceRatio:0} por partida"), mut) });
+        }
+        else
+        {
+            row(L.T("Total", "Total", "Total"), new[] { new Seg(L.Count(total.Value, "coffre", "chest", "cofre"), ConsoleColor.Yellow), new Seg("  ·  " + L.T("exact, d'après Epic", "exact, from Epic", "exacto, según Epic"), mut) });
+        }
+        var today = DateTime.Now.Date;
+        var todayExact = _season.PerDayExact.GetValueOrDefault(today);
+        var todayEst = _season.PerDayEstimated.GetValueOrDefault(today);
+        var session = _sessionStart != null ? total.Value - _sessionStart.Value : 0;
+        if (Capped)
+        {
+            row(L.T("Aujourd'hui", "Today", "Hoy"), new[] { new Seg(TodayPending && todayExact < 0.5 ? "—" : "≈ " + L.Count((int)Math.Round(todayExact + todayEst), "coffre", "chest", "cofre"), ConsoleColor.Yellow),
+                new Seg("  ·  " + L.T("au-delà de 1 000, Epic publie tes parties le lendemain vers 1 h", "beyond 1,000, Epic publishes your matches the next day around 1 am", "más allá de 1000, Epic publica tus partidas al día siguiente hacia la 1 h"), ConsoleColor.DarkGray) });
+        }
+        else
+        {
+            row(L.T("Aujourd'hui", "Today", "Hoy"), new[] { new Seg(L.Count((int)Math.Round(todayExact + todayEst), "coffre", "chest", "cofre"), ConsoleColor.Yellow) });
+            row(L.T("Session", "Session", "Sesión"), new[] { new Seg(L.Count(session, "coffre", "chest", "cofre"), ConsoleColor.Yellow) });
+        }
+        if (_season.Count.Count > 1)
+        {
+            row(L.T("Paliers", "Stages", "Etapas"), new[] { new Seg(string.Join("  ", _season.Count.Skip(1).Select(m => $"{L.N(m.Value)} ({m.At.ToLocalTime():dd'/'MM})")), mut) });
+        }
+        if (_data.Calib is { } c)
+        {
+            row(L.T("Étalonnage", "Calibration", "Calibración"), new[] { new Seg($"{c.Matches} " + L.T("parties", "matches", "partidas") + (c.Chests is int cc ? $" · {L.N(cc)} " + L.T("coffres", "chests", "cofres") : "") + $"  ({c.At.ToLocalTime():dd'/'MM})", mut) });
         }
     }
 
@@ -843,53 +947,22 @@ public static class Ps5Mode
         catch { }
     }
 
-    private static void Add(string text, ConsoleColor color)
+    private static void Add(string text, ConsoleColor color) => Say(text, color);
+
+    /// <summary>Une ligne dans l'activité de l'écran principal.</summary>
+    private static void Say(string text, ConsoleColor color)
     {
-        lock (Log)
+        lock (Console.Out)
         {
-            Log.Add((DateTime.Now, text, color));
-            if (Log.Count > 50) Log.RemoveAt(0);
+            try { Console.ForegroundColor = color; } catch { }
+            Console.WriteLine(text);
+            try { Console.ResetColor(); } catch { }
         }
     }
 
-    // ---- Overlay (même fenêtre que le mode PC) ----------------------------------------------------------------
+    // ---- Overlay (fenêtre de ChestCounter, alimentée par le compte Epic) ---------------------------------------
 
-    public sealed class OverlayPos
-    {
-        public int? X { get; set; }
-        public int? Y { get; set; }
-        public bool Locked { get; set; }
-        public bool Hidden { get; set; }
-    }
-
-    private static string OverlayPosPath => Path.Combine(_folder, "overlay.json");
-    private static OverlayPos _overlayPos = new();
-
-    private static void StartOverlay(Config? config)
-    {
-        if (!OperatingSystem.IsWindows()) return;
-        _overlayPos = Load<OverlayPos>(OverlayPosPath) ?? new OverlayPos();
-        NativeOverlay.SetAppearance(config?.OverlaySize ?? 100, config?.OverlayOpacity ?? 100);
-        var style = config?.OverlayStyle ?? "hud";
-        NativeOverlay.SetStyle(Array.IndexOf(NativeOverlay.Styles, style) >= 0 ? style : "hud");
-        NativeOverlay.Start(_overlayPos.X, _overlayPos.Y, _overlayPos.Locked,
-            (x, y) => { _overlayPos.X = x; _overlayPos.Y = y; SaveOverlayPos(); },
-            locked => { _overlayPos.Locked = locked; SaveOverlayPos(); });
-        UpdateOverlay();
-        if (_overlayPos.Hidden && NativeOverlay.IsVisible) NativeOverlay.Toggle();
-    }
-
-    private static void StopOverlay()
-    {
-        if (OperatingSystem.IsWindows()) NativeOverlay.Stop();
-    }
-
-    private static void SaveOverlayPos()
-    {
-        try { Save(OverlayPosPath, _overlayPos); } catch { }
-    }
-
-    private static void UpdateOverlay()
+    public static void UpdateOverlay()
     {
         if (!OperatingSystem.IsWindows() || !NativeOverlay.IsRunning) return;
         var total = _tracked?.Value;
@@ -923,118 +996,6 @@ public static class Ps5Mode
         }
     }
 
-    // ---- Écran principal ----------------------------------------------------------------------------------------
-
-    private enum Exit { Quit, Relogin }
-
-    private static Exit MainScreen()
-    {
-        if (OperatingSystem.IsWindows() && !NativeOverlay.IsRunning) StartOverlay(_config);
-        ConsoleUi.Screen("Chest Counter · PS5");
-        Frames.Invalidate();
-        Task<bool>? polling = null;
-        _nextPoll = DateTime.MinValue;
-        var lastDraw = DateTime.MinValue;
-        while (true)
-        {
-            if (polling == null && DateTime.Now >= _nextPoll)
-            {
-                polling = Task.Run(Poll);
-                lastDraw = DateTime.MinValue;
-            }
-            if (polling is { IsCompleted: true })
-            {
-                var ok = polling.Result;
-                polling = null;
-                WriteReport();
-                UpdateOverlay();
-                if (ok && Capped && _data.Calib == null && !_data.CalibAsked && ConsoleUi.Interactive)
-                {
-                    CalibrateScreen(); // proposé une fois, au premier lancement au-dessus du plafond
-                    lastDraw = DateTime.MinValue;
-                }
-                if (ok && !_reportOpened)
-                {
-                    _reportOpened = true;
-                    OpenUrl(ReportPath);
-                }
-                _nextPoll = DateTime.Now + PollEvery;
-                lastDraw = DateTime.MinValue;
-                if (!ok)
-                {
-                    Frames.Invalidate();
-                    ConsoleUi.Screen("Chest Counter · PS5");
-                    ConsoleUi.Text(L.T("La connexion Epic n'est plus valide : il faut te reconnecter.", "The Epic sign-in is no longer valid: sign in again.", "La conexión Epic ya no es válida: vuelve a conectarte."), ConsoleColor.Yellow);
-                    Thread.Sleep(2000);
-                    return Exit.Relogin;
-                }
-            }
-            if (DateTime.Now - lastDraw > TimeSpan.FromSeconds(1))
-            {
-                Frames.Draw(BuildFrame(polling != null));
-                lastDraw = DateTime.Now;
-            }
-            if (ConsoleUi.Interactive && Console.KeyAvailable)
-            {
-                var key = Console.ReadKey(intercept: true);
-                switch (char.ToLowerInvariant(key.KeyChar))
-                {
-                    case 'r':
-                        if (polling == null) _nextPoll = DateTime.MinValue;
-                        break;
-                    case 'p':
-                        WriteReport();
-                        OpenUrl(ReportPath);
-                        break;
-                    case 'o':
-                        OpenUrl(_folder);
-                        break;
-                    case 'c':
-                        if (polling == null) ChooseCounter();
-                        lastDraw = DateTime.MinValue;
-                        break;
-                    case 'd':
-                        Frames.Invalidate();
-                        ConsoleUi.Screen("Chest Counter · PS5");
-                        if (ConsoleUi.Confirm(L.T("Se déconnecter (la connexion est aussi révoquée chez Epic)", "Sign out (also revoked at Epic)", "Cerrar sesión (también se revoca en Epic)"),
-                                L.T("Annuler", "Cancel", "Cancelar")))
-                        {
-                            polling?.Wait();
-                            Logout();
-                            return Exit.Relogin;
-                        }
-                        Frames.Invalidate();
-                        lastDraw = DateTime.MinValue;
-                        break;
-                    case 'e':
-                        if (polling == null) CalibrateScreen();
-                        lastDraw = DateTime.MinValue;
-                        break;
-                    case 'v':
-                        if (OperatingSystem.IsWindows() && NativeOverlay.IsRunning)
-                        {
-                            NativeOverlay.Toggle();
-                            _overlayPos.Hidden = !NativeOverlay.IsVisible;
-                            SaveOverlayPos();
-                        }
-                        break;
-                    case 'l':
-                        if (OperatingSystem.IsWindows() && NativeOverlay.IsRunning) NativeOverlay.ToggleLock();
-                        break;
-                    case 'q':
-                        StopOverlay();
-                        return Exit.Quit;
-                }
-                if (key.Key == ConsoleKey.Escape)
-                {
-                    StopOverlay();
-                    return Exit.Quit;
-                }
-            }
-            Thread.Sleep(100);
-        }
-    }
-
     private static void ChooseCounter()
     {
         if (_counters.Count == 0) return;
@@ -1058,136 +1019,6 @@ public static class Ps5Mode
         Save(DataPath, _data);
         _nextPoll = DateTime.MinValue;
         Frames.Invalidate();
-        ConsoleUi.Screen("Chest Counter · PS5");
-    }
-
-    private static Frame BuildFrame(bool syncing)
-    {
-        var f = new Frame();
-        var gold = ConsoleColor.Yellow;
-        var mut = ConsoleColor.DarkGray;
-        var width = Math.Min(ConsoleUi.Width - 4, 90);
-
-        var status = syncing ? (L.T("synchro…", "syncing…", "sincronizando…"), ConsoleColor.Cyan)
-            : _error != null ? ("● " + L.T("erreur", "error", "error"), ConsoleColor.Red)
-            : _lastSync != null ? ("● " + L.T("connecté", "connected", "conectado") + $" · {_lastSync:HH:mm:ss}", ConsoleColor.Green)
-            : ("…", mut);
-        f.Blank();
-        f.Add(new Seg("  Chest Counter", gold), new Seg(" · PS5", ConsoleColor.Cyan), new Seg($"     {_player}   ", ConsoleColor.White), new Seg(status.Item1, status.Item2));
-        f.Add("  " + new string('─', width), mut);
-        f.Blank();
-
-        var total = _tracked?.Value;
-        var totalText = total == null ? "–" : L.N(total.Value) + (Capped ? "+" : "");
-        foreach (var line in BigDigits.Render(totalText))
-        {
-            f.Add("    " + line, gold);
-        }
-        f.Add("    " + L.T("coffres ouverts cette saison", "chests opened this season", "cofres abiertos esta temporada"), mut);
-        f.Blank();
-
-        var todayKey = DateTime.Now.Date;
-        var today = _data.History.Where(h => h.At.ToLocalTime().Date == todayKey).Sum(h => h.Delta);
-        var session = total != null && _sessionStart != null ? total.Value - _sessionStart.Value : 0;
-        var before = _data.Baseline?.Value;
-        f.Add(
-            new Seg("    " + L.T("Cette session ", "This session ", "Esta sesión "), mut), new Seg($"+{session}".PadRight(8), ConsoleColor.White),
-            new Seg(L.T("Aujourd'hui ", "Today ", "Hoy "), mut), new Seg($"+{today}".PadRight(8), ConsoleColor.White),
-            new Seg(L.T("Avant le suivi ", "Before tracking ", "Antes del seguimiento "), mut),
-            new Seg(before == null ? "–" : L.N(before.Value) + (Capped ? "+" : ""), ConsoleColor.White),
-            new Seg(_data.Baseline == null ? "" : $"  ({_data.Baseline.At.ToLocalTime():dd'/'MM})", mut));
-        if (_season.Count.Count > 1)
-        {
-            f.Blank();
-            f.Add("  " + L.T("TA SAISON", "YOUR SEASON", "TU TEMPORADA"), ConsoleColor.Cyan);
-            f.Add("    " + string.Join("   ", _season.Count.Skip(1).Select(m => $"{L.N(m.Value)} ({m.At.ToLocalTime():dd'/'MM HH:mm})")), ConsoleColor.White);
-            if (_season.PaceEstimate is int pace)
-            {
-                f.Add(new Seg("    ≈ " + L.N(pace), gold), new Seg(L.T($"  coffres estimés aujourd'hui (≈ {_season.PaceRatio:0} par partie × {_season.MatchesAfter} parties depuis les 1 000)",
-                    $"  chests estimated today (≈ {_season.PaceRatio:0} per match × {_season.MatchesAfter} matches since 1,000)",
-                    $"  cofres estimados hoy (≈ {_season.PaceRatio:0} por partida × {_season.MatchesAfter} partidas desde los 1000)"), mut));
-            }
-            if (_season.Estimate is int est)
-            {
-                f.Add(new Seg("    ≈ " + L.N(est), gold), new Seg(L.T($"  coffres estimés au {_season.EstimateAt!.Value.ToLocalTime():dd'/'MM} (d'après ton rythme de coffres rares)",
-                    $"  chests estimated on {_season.EstimateAt!.Value.ToLocalTime():dd'/'MM} (from your rare chest pace)",
-                    $"  cofres estimados el {_season.EstimateAt!.Value.ToLocalTime():dd'/'MM} (según tu ritmo de cofres raros)"), mut));
-            }
-        }
-        if (Capped)
-        {
-            f.Blank();
-            f.Add("    ⚠ " + L.T("La Chasse au trésor s'arrête à 1 000 chez Epic : au-delà, le total ne bouge plus.",
-                "Epic's Treasure Hunt counter stops at 1,000: beyond that, the total no longer moves.",
-                "La Caza del tesoro de Epic se detiene en 1000: después, el total ya no se mueve."), ConsoleColor.DarkYellow);
-        }
-        if (_error != null)
-        {
-            f.Blank();
-            f.Add("    ✖ " + _error, ConsoleColor.Red);
-        }
-
-        // Par jour (14 derniers jours avec des gains)
-        f.Blank();
-        f.Add("  " + L.T("PAR JOUR", "PER DAY", "POR DÍA"), ConsoleColor.Cyan);
-        var days = _season.PerDayExact.Keys.Union(_season.PerDayEstimated.Keys).OrderBy(d => d).TakeLast(7)
-            .Select(d => (d, (int)Math.Round(_season.PerDayExact.GetValueOrDefault(d) + _season.PerDayEstimated.GetValueOrDefault(d)), _season.PerDayEstimated.GetValueOrDefault(d) >= 0.5))
-            .Where(x => x.Item2 > 0).ToList();
-        if (days.Count == 0)
-        {
-            f.Add("    " + L.T("Les jours apparaissent au fil des parties.", "Days appear as you play.", "Los días aparecen al jugar."), mut);
-        }
-        else
-        {
-            var max = Math.Max(1, days.Max(d => d.Item2));
-            foreach (var (day, n, est) in days)
-            {
-                var bar = new string(est ? '▒' : '█', Math.Max(1, (int)Math.Round(30.0 * n / max)));
-                f.Add(new Seg($"    {day:dd'/'MM}  ", mut), new Seg(bar, est ? ConsoleColor.DarkYellow : gold), new Seg((est ? " ≈ " : " ") + n, ConsoleColor.White));
-            }
-            if (days.Any(d => d.Item3)) f.Add("    " + L.T("▒ ≈ estimé (paliers de la quête + parties jouées)", "▒ ≈ estimated (quest stages + matches played)", "▒ ≈ estimado (etapas + partidas jugadas)"), mut);
-        }
-
-        // Derniers gains + activité
-        f.Blank();
-        f.Add("  " + L.T("DERNIERS GAINS", "LATEST GAINS", "ÚLTIMAS GANANCIAS"), ConsoleColor.Cyan);
-        var recent = _data.History.TakeLast(5).Reverse().ToList();
-        if (recent.Count == 0) f.Add("    " + L.T("Rien pour l'instant.", "Nothing yet.", "Nada por ahora."), mut);
-        foreach (var h in recent)
-        {
-            f.Add(new Seg($"    {h.At.ToLocalTime():dd'/'MM HH:mm}  ", mut), new Seg($"+{h.Delta}", ConsoleColor.Green), new Seg($"  →  {L.N(h.Total)}", ConsoleColor.White));
-        }
-
-        // Compteurs Epic
-        f.Blank();
-        f.Add("  " + L.T("COMPTEURS EPIC", "EPIC COUNTERS", "CONTADORES EPIC"), ConsoleColor.Cyan);
-        foreach (var c in _counters.Take(5))
-        {
-            var on = c.Id == _tracked?.Id;
-            f.Add(new Seg(on ? "    ► " : "      ", gold), new Seg($"{c.Value,6}  ", on ? gold : ConsoleColor.White), new Seg(Pretty(c.Quest), mut));
-        }
-
-        List<(DateTime At, string Text, ConsoleColor Color)> log;
-        lock (Log) log = Log.TakeLast(3).ToList();
-        if (log.Count > 0)
-        {
-            f.Blank();
-            foreach (var (at, text, color) in log) f.Add(new Seg($"    {at:HH:mm}  ", mut), new Seg(text, color));
-        }
-
-        f.Blank();
-        var next = _nextPoll > DateTime.Now ? (int)(_nextPoll - DateTime.Now).TotalSeconds : 0;
-        f.Add(
-            new Seg("  [R] ", gold), new Seg(L.T("actualiser", "refresh", "actualizar") + (syncing ? "" : $" ({next}s)") + "   ", mut),
-            new Seg("[P] ", gold), new Seg(L.T("page", "page", "página") + "   ", mut),
-            new Seg("[E] ", gold), new Seg(L.T("étalonner", "calibrate", "calibrar") + "   ", mut),
-            new Seg("[V] ", gold), new Seg("overlay   ", mut),
-            new Seg("[L] ", gold), new Seg(L.T("verrou", "lock", "bloqueo") + "   ", mut),
-            new Seg("[C] ", gold), new Seg(L.T("compteur", "counter", "contador") + "   ", mut),
-            new Seg("[O] ", gold), new Seg(L.T("dossier", "folder", "carpeta") + "   ", mut),
-            new Seg("[D] ", gold), new Seg(L.T("déconnexion", "sign out", "cerrar sesión") + "   ", mut),
-            new Seg("[Échap] ", gold), new Seg(L.T("quitter", "quit", "salir"), mut));
-        return f;
     }
 
     // ---- Utilitaires --------------------------------------------------------------------------------------------
@@ -1206,36 +1037,5 @@ public static class Ps5Mode
     private static void OpenUrl(string url)
     {
         try { Process.Start(new ProcessStartInfo(url) { UseShellExecute = true })?.Dispose(); } catch { }
-    }
-}
-
-/// <summary>Gros chiffres sur 3 lignes pour le total (style compteur).</summary>
-public static class BigDigits
-{
-    private static readonly Dictionary<char, string[]> Glyphs = new()
-    {
-        ['0'] = new[] { "█▀█", "█ █", "▀▀▀" },
-        ['1'] = new[] { " ▀█", "  █", "  ▀" },
-        ['2'] = new[] { "▀▀█", "█▀▀", "▀▀▀" },
-        ['3'] = new[] { "▀▀█", " ▀█", "▀▀▀" },
-        ['4'] = new[] { "█ █", "▀▀█", "  ▀" },
-        ['5'] = new[] { "█▀▀", "▀▀█", "▀▀▀" },
-        ['6'] = new[] { "█▀▀", "█▀█", "▀▀▀" },
-        ['7'] = new[] { "▀▀█", "  █", "  ▀" },
-        ['8'] = new[] { "█▀█", "█▀█", "▀▀▀" },
-        ['9'] = new[] { "█▀█", "▀▀█", "▀▀▀" },
-        ['+'] = new[] { "   ", "▄█▄", " ▀ " },
-        ['–'] = new[] { "   ", "▀▀▀", "   " },
-    };
-
-    public static string[] Render(string text)
-    {
-        var lines = new[] { "", "", "" };
-        foreach (var ch in text)
-        {
-            if (!Glyphs.TryGetValue(ch, out var g)) continue; // séparateurs de milliers ignorés
-            for (var i = 0; i < 3; i++) lines[i] += g[i] + " ";
-        }
-        return lines;
     }
 }

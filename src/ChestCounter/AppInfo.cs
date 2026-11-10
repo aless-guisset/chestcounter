@@ -8,6 +8,12 @@ public static class AppInfo
     public static string VersionText => $"{Version.Major}.{Version.Minor}.{Math.Max(0, Version.Build)}";
 
     public const string Repo = "LED-N/Fortnite-ChestCounter";
+
+    /// <summary>
+    /// Copie modifiée (PC + console) : les mises à jour de LED-N remplaceraient l'exe et effaceraient le mode console,
+    /// donc elles sont coupées tant qu'on n'a pas notre propre dépôt de versions.
+    /// </summary>
+    public const bool UpdatesEnabled = false;
     public static string RepoUrl => "https://github.com/" + Repo;
     public static string IssuesUrl => RepoUrl + "/issues";
 
