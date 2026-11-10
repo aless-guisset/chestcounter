@@ -410,6 +410,125 @@ public static class ReportWriter
         return sb.ToString();
     }
 
+    /// <summary>Rapport du mode PS5 : même style « journal de bord », alimenté par le compteur du compte Epic.</summary>
+    public static void WritePs5(string path, string? player, Ps5Mode.Ps5Data data, IReadOnlyList<Ps5Mode.Counter> counters,
+        Ps5Mode.Counter? tracked, bool capped, int session, string? error)
+    {
+        try
+        {
+            WriteAtomic(path, Ps5Report(player, data, counters, tracked, capped, session, error));
+        }
+        catch (Exception ex)
+        {
+            ErrorLog.Write("PS5 report", ex);
+        }
+    }
+
+    public static string Ps5Report(string? player, Ps5Mode.Ps5Data data, IReadOnlyList<Ps5Mode.Counter> counters,
+        Ps5Mode.Counter? tracked, bool capped, int session, string? error)
+    {
+        string N(int n) => n.ToString("N0", Fr);
+        string Tile(string value, string label, string? sub = null) =>
+            $"""<div class="tile"><div class="v num">{value}</div><div class="l">{label}</div>{(sub != null ? $"<div class=\"s\">{sub}</div>" : "")}</div>""";
+        var plus = capped ? "+" : "";
+        var total = tracked?.Value;
+        var history = data.History;
+        var todayDate = DateTime.Now.Date;
+        var today = history.Where(h => h.At.ToLocalTime().Date == todayDate).Sum(h => h.Delta);
+        var before = data.Baseline?.Value;
+        var since = total != null && before != null ? total.Value - before.Value : 0;
+
+        var sb = new StringBuilder();
+        var title = L.T("Compteur de coffres", "Chest Counter", "Contador de cofres");
+        var updated = L.T(
+            $"Mis à jour le {DateTime.Now.ToString("dd/MM/yyyy à HH:mm:ss", Fr)} · actualisation auto",
+            $"Updated {DateTime.Now.ToString("d MMM yyyy 'at' HH:mm:ss", Fr)} · auto refresh",
+            $"Actualizado el {DateTime.Now.ToString("dd/MM/yyyy 'a las' HH:mm:ss", Fr)} · actualización automática");
+        sb.Append($"""
+            <!doctype html><html lang="{L.Code}"><head><meta charset="utf-8">
+            <meta name="viewport" content="width=device-width,initial-scale=1">
+            <meta http-equiv="refresh" content="15">
+            <title>{title} · PS5</title><style>{FontFace}{Style}</style></head><body><main>
+            <header><div class="brand">{ChestIcon}<div><h1 class="pirate">{title}</h1><div class="who">{(string.IsNullOrEmpty(player) ? "" : $"<b>{H(player)}</b> · ")}PS5 · {L.T("compte Epic", "Epic account", "cuenta Epic")}</div></div></div>
+            <span class="muted" style="font-size:13px">{updated}</span></header>
+            """);
+        if (error != null)
+        {
+            sb.Append($"<div class=\"flag\">{FlagIcon}<span>{H(error)}</span></div>");
+        }
+        sb.Append($"""
+            <section class="tiles">
+              <div class="tile hero"><div class="k">{L.T("Coffres cette saison", "Chests this season", "Cofres esta temporada")}</div><div class="v num">{(total == null ? "–" : N(total.Value) + plus)}</div><div class="l">{L.T($"d'après ton compte Epic · +{N(session)} depuis le lancement", $"from your Epic account · +{N(session)} since the tool started", $"según tu cuenta Epic · +{N(session)} desde que se abrió")}</div></div>
+              {Tile("+" + N(today), L.T("aujourd'hui", "today", "hoy"))}
+              {Tile("+" + N(session), L.T("cette session", "this session", "esta sesión"))}
+              {Tile(before == null ? "–" : N(before.Value) + plus, L.T("avant le suivi", "before tracking", "antes del seguimiento"), data.Baseline == null ? null : data.Baseline.At.ToLocalTime().ToString("dd/MM/yyyy", Fr))}
+              {Tile("+" + N(since), L.T("depuis le suivi", "since tracking", "desde el seguimiento"))}
+            </section>
+            """);
+        if (capped)
+        {
+            sb.Append($"<div class=\"flag\" style=\"margin-top:-12px\">{FlagIcon}<span>" + L.T(
+                "<b>Plafond atteint.</b> Le compteur Epic de la Chasse au trésor s'arrête à 1 000 : au-delà, il ne bouge plus. Le vrai total est plus haut, mais Epic ne le garde pas.",
+                "<b>Cap reached.</b> Epic's Treasure Hunt counter stops at 1,000: beyond that it no longer moves. The real total is higher, but Epic does not keep it.",
+                "<b>Tope alcanzado.</b> El contador de la Caza del tesoro de Epic se detiene en 1000: después ya no se mueve. El total real es mayor, pero Epic no lo guarda.") + "</span></div>");
+        }
+
+        // 30 derniers jours, une barre par jour (même graphique que le mode PC).
+        var days = Enumerable.Range(0, 30).Select(i => todayDate.AddDays(i - 29)).ToList();
+        var perDay = days.Select(d => history.Where(h => h.At.ToLocalTime().Date == d).Sum(h => h.Delta)).ToList();
+        var max = Math.Max(1, perDay.Max());
+        sb.Append($"<section><h2 class=\"pirate\">{L.T("Coffres par jour", "Chests per day", "Cofres por día")}</h2><div class=\"card chart\"><div class=\"bars\">");
+        for (var i = 0; i < days.Count; i++)
+        {
+            var v = perDay[i];
+            var h = (int)Math.Round(100.0 * v / max);
+            var tip = $"{days[i].ToString(L.T("ddd dd/MM", "ddd d MMM", "ddd dd/MM"), Fr)}{L.T(" : ", ": ", ": ")}{L.Count(v, "coffre", "chest", "cofre")}";
+            var cls = v == 0 ? " zero" : v == max ? " top" : "";
+            sb.Append($"<div class=\"col\" aria-label=\"{H(tip)}\"><span class=\"tip\" style=\"bottom:calc({Math.Max(h, 3)}% + 6px)\">{H(tip)}</span><div class=\"bar{cls}\" style=\"height:{h}%\"></div></div>");
+        }
+        sb.Append($"</div><div class=\"axis\"><span>{days[0].ToString(L.T("dd/MM", "d MMM", "dd/MM"), Fr)}</span>"
+            + (perDay.Max() == 0 ? $"<span>{L.T("les jours se remplissent au fil des parties", "days fill in as you play", "los días se llenan al jugar")}</span>" : "")
+            + $"<span>{L.T("aujourd'hui", "today", "hoy")}</span></div></div></section>");
+
+        // Compteurs Epic | derniers gains
+        sb.Append($"<div class=\"two\"><section><h2 class=\"pirate\">{L.T("Compteurs de ton compte Epic", "Your Epic account counters", "Contadores de tu cuenta Epic")}</h2><div class=\"card\"><table>");
+        if (counters.Count == 0)
+        {
+            sb.Append($"<tr><td class=\"items\">{L.T("Aucun pour l'instant.", "None yet.", "Ninguno por ahora.")}</td></tr>");
+        }
+        foreach (var c in counters.Take(12))
+        {
+            var on = c.Id == tracked?.Id;
+            var done = c.State.Equals("Claimed", StringComparison.OrdinalIgnoreCase);
+            var goal = c.Value >= 500 ? 1000 : c.Value >= 100 ? 500 : 100;
+            var w = done ? 100 : Math.Max(2, (int)Math.Round(100.0 * Math.Min(c.Value, goal) / goal));
+            var state = done ? L.T("terminé", "completed", "completado") : L.T("en cours", "in progress", "en curso");
+            sb.Append($"<tr><td>{(on ? "<b class=\"gold\">► </b>" : "")}{H(Ps5Mode.Pretty(c.Quest))}<div class=\"items\">{state} · {H(c.Quest)}</div></td><td style=\"width:150px\"><span class=\"meter\"><i style=\"width:{w}%;background:var(--gold)\"></i></span></td><td class=\"n num big\">{N(c.Value)}</td></tr>");
+        }
+        sb.Append("</table></div></section>");
+        sb.Append($"<section><h2 class=\"pirate\">{L.T("Derniers gains", "Latest gains", "Últimas ganancias")}</h2><div class=\"card\"><table>");
+        if (history.Count == 0)
+        {
+            sb.Append($"<tr><td class=\"items\">{L.T("Rien pour l'instant : joue une partie, le compteur se met à jour toutes les minutes.", "Nothing yet: play a match, the counter updates every minute.", "Nada por ahora: juega una partida, el contador se actualiza cada minuto.")}</td></tr>");
+        }
+        else
+        {
+            sb.Append($"<tr><th>{L.T("Date", "Date", "Fecha")}</th><th style=\"text-align:right\">{L.T("Coffres", "Chests", "Cofres")}</th><th style=\"text-align:right\">{L.T("Total", "Total", "Total")}</th></tr>");
+        }
+        foreach (var g in history.AsEnumerable().Reverse().Take(30))
+        {
+            sb.Append($"<tr><td class=\"nw num items\">{L.DateTimeShort(g.At.ToLocalTime())}</td><td class=\"n num big\" style=\"color:#2f7d32\">+{N(g.Delta)}</td><td class=\"n num\">{N(g.Total)}</td></tr>");
+        }
+        sb.Append("</table></div></section></div>");
+
+        sb.Append(L.T(
+            "<footer>Mode PS5 : sur console, les replays restent dans la console, donc le compteur lit à la place le compteur de coffres que Fortnite garde sur ton compte Epic (quêtes de la Chasse au trésor), toutes plateformes confondues, depuis le début de la saison. Vérification toutes les minutes. Le détail par jour commence au premier lancement : Epic ne garde pas l'historique partie par partie.</footer>",
+            "<footer>PS5 mode: on console, replays stay on the console, so the counter reads instead the chest counter Fortnite keeps on your Epic account (Treasure Hunt quests), all platforms, since the start of the season. Checked every minute. The per-day detail starts at the first launch: Epic does not keep a per-match history.</footer>",
+            "<footer>Modo PS5: en consola, las repeticiones se quedan en la consola, así que el contador lee en su lugar el contador de cofres que Fortnite guarda en tu cuenta Epic (misiones de la Caza del tesoro), en todas las plataformas, desde el inicio de la temporada. Se comprueba cada minuto. El detalle por día empieza con el primer lanzamiento: Epic no guarda el historial partida a partida.</footer>"));
+        sb.Append("</main></body></html>");
+        return sb.ToString();
+    }
+
     private static string LoadingCard(ScanProgress? p)
     {
         if (p == null)

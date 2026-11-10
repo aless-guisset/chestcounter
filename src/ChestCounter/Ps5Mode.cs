@@ -82,6 +82,14 @@ public static class Ps5Mode
     private static string AuthPath => Path.Combine(_folder, "auth.json");
     private static string DataPath => Path.Combine(_folder, "data.json");
     private static string CsvPath => Path.Combine(_folder, "historique.csv");
+    private static string ReportPath => Path.Combine(_folder, "report.html");
+    private static bool _reportOpened;
+
+    private static void WriteReport()
+    {
+        var session = _tracked != null && _sessionStart != null ? _tracked.Value - _sessionStart.Value : 0;
+        ReportWriter.WritePs5(ReportPath, _player, _data, _counters, _tracked, Capped, session, _error);
+    }
 
     private static string? _token, _accountId, _player;
     private static DateTime _expires;
@@ -317,6 +325,21 @@ public static class Ps5Mode
         return pref ?? best;
     }
 
+    /// <summary>Nom lisible d'une quête : quest_s43_treasurehunt_count_05 → « Chasse au trésor · coffres · palier 5 ».</summary>
+    public static string Pretty(string quest)
+    {
+        var m = Regex.Match(quest, @"treasurehunt_(count|rarity|sprites|map)_0*(\d+)", RegexOptions.IgnoreCase);
+        if (!m.Success) return quest;
+        var what = m.Groups[1].Value.ToLowerInvariant() switch
+        {
+            "count" => L.T("coffres", "chests", "cofres"),
+            "rarity" => L.T("coffres rares", "rare chests", "cofres raros"),
+            "sprites" => L.T("sprites", "sprites", "sprites"),
+            _ => L.T("cartes au trésor", "treasure maps", "mapas del tesoro"),
+        };
+        return $"{L.T("Chasse au trésor", "Treasure Hunt", "Caza del tesoro")} · {what} · {L.T("palier", "stage", "etapa")} {m.Groups[2].Value}";
+    }
+
     private static bool Capped => _tracked != null && _tracked.Value >= Cap && PreferRe.IsMatch(_tracked.Id);
 
     /// <summary>Une vérification. Retourne false si une nouvelle connexion est nécessaire.</summary>
@@ -420,6 +443,12 @@ public static class Ps5Mode
             {
                 var ok = polling.Result;
                 polling = null;
+                WriteReport();
+                if (ok && !_reportOpened)
+                {
+                    _reportOpened = true;
+                    OpenUrl(ReportPath);
+                }
                 _nextPoll = DateTime.Now + PollEvery;
                 lastDraw = DateTime.MinValue;
                 if (!ok)
@@ -443,6 +472,10 @@ public static class Ps5Mode
                 {
                     case 'r':
                         if (polling == null) _nextPoll = DateTime.MinValue;
+                        break;
+                    case 'p':
+                        WriteReport();
+                        OpenUrl(ReportPath);
                         break;
                     case 'o':
                         OpenUrl(_folder);
@@ -581,7 +614,7 @@ public static class Ps5Mode
         foreach (var c in _counters.Take(5))
         {
             var on = c.Id == _tracked?.Id;
-            f.Add(new Seg(on ? "    ► " : "      ", gold), new Seg($"{c.Value,6}  ", on ? gold : ConsoleColor.White), new Seg($"{c.Quest}  [{c.State}]", mut));
+            f.Add(new Seg(on ? "    ► " : "      ", gold), new Seg($"{c.Value,6}  ", on ? gold : ConsoleColor.White), new Seg(Pretty(c.Quest), mut));
         }
 
         List<(DateTime At, string Text, ConsoleColor Color)> log;
@@ -596,6 +629,7 @@ public static class Ps5Mode
         var next = _nextPoll > DateTime.Now ? (int)(_nextPoll - DateTime.Now).TotalSeconds : 0;
         f.Add(
             new Seg("  [R] ", gold), new Seg(L.T("actualiser", "refresh", "actualizar") + (syncing ? "" : $" ({next}s)") + "   ", mut),
+            new Seg("[P] ", gold), new Seg(L.T("page", "page", "página") + "   ", mut),
             new Seg("[C] ", gold), new Seg(L.T("compteur", "counter", "contador") + "   ", mut),
             new Seg("[O] ", gold), new Seg(L.T("dossier", "folder", "carpeta") + "   ", mut),
             new Seg("[D] ", gold), new Seg(L.T("déconnexion", "sign out", "cerrar sesión") + "   ", mut),
