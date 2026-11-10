@@ -71,7 +71,19 @@ public static class Ps5Mode
         public List<Gain> History { get; set; } = new();
         /// <summary>Cache des stats Epic : parties jouées depuis MatchStart jusqu'à la fin de chaque jour (yyyy-MM-dd).</summary>
         public DateTime? MatchStart { get; set; }
+        /// <summary>Étalonnage donné une fois par le joueur : ses vrais chiffres de la saison à un instant.</summary>
+        public Calibration? Calib { get; set; }
+        public bool CalibAsked { get; set; }
         public Dictionary<string, int> MatchesPerUtcDay { get; set; } = new();
+    }
+
+    public sealed class Calibration
+    {
+        public DateTime At { get; set; }
+        /// <summary>Parties jouées cette saison selon le joueur (Fortnite → Carrière).</summary>
+        public int Matches { get; set; }
+        /// <summary>Coffres ouverts cette saison selon le joueur (null = inconnu).</summary>
+        public int? Chests { get; set; }
     }
 
     public sealed record Counter(string Id, string Quest, string Objective, int Value, string State);
@@ -100,6 +112,9 @@ public static class Ps5Mode
         public bool UsedMatches { get; set; }
         /// <summary>Parties jouées depuis le début (stats Epic), pour l'estimation de la session au-delà du plafond.</summary>
         public int? MatchesNow { get; set; }
+        /// <summary>Correction des parties Epic : parties réelles (étalonnage) ÷ parties vues par Epic au même moment.</summary>
+        public double MatchScale { get; set; } = 1;
+        public Calibration? Calib { get; set; }
     }
 
     private sealed record Pace(DateTime At, double Ratio, int Before, int Now);
@@ -123,6 +138,8 @@ public static class Ps5Mode
         if (_data.Baseline is { } b && b.Value < Cap) points.Add(new Point(b.At, b.Value, true));
         points.AddRange(_data.History.Where(h => h.Total <= Cap).Select(h => new Point(h.At, h.Total, true)));
         if (tracked != null && !capped && tracked.Value < Cap) points.Add(new Point(DateTime.UtcNow, tracked.Value, true));
+        var cal = _data.Calib;
+        if (capped && cal?.Chests is int calChests && calChests >= Cap) points.Add(new Point(cal.At, calChests, false)); // point sûr donné par le joueur
         points = points.OrderBy(p => p.At).ToList();
         var clean = new List<Point>();
         foreach (var p in points)
@@ -133,7 +150,14 @@ public static class Ps5Mode
         if (clean.Count == 0) return;
 
         var start = clean[0].At;
+        _seasonStart = start;
         RefreshMatches(start);
+        s.Calib = cal;
+        if (cal != null && cal.Matches > 0)
+        {
+            var epicAtCal = MatchesAt(cal.At, start);
+            if (epicAtCal >= 1) s.MatchScale = cal.Matches / epicAtCal;
+        }
         s.UsedMatches = _data.MatchesPerUtcDay.Count > 0;
 
         for (var i = 1; i < clean.Count; i++)
@@ -152,14 +176,30 @@ public static class Ps5Mode
 
         if (!capped) return;
         var last = clean[^1];
-        var pace = ComputePace(s, start, s.Count.LastOrDefault(m => m.Value >= Cap)?.At ?? last.At);
-        if (pace == null) return;
-        s.PaceRatio = pace.Ratio;
-        s.MatchesBefore = pace.Before;
-        s.MatchesAfter = Math.Max(0, pace.Now - pace.Before);
-        s.MatchesNow = pace.Now;
-        // Total = dernier point sûr (le plafond) + parties jouées depuis × coffres par partie.
-        var afterCap = s.MatchesAfter * pace.Ratio;
+        double afterCap;
+        if (cal?.Chests is int cc && cal.Matches > 0 && last.At == cal.At && last.Value == cc)
+        {
+            // Étalonné : coffres par partie = les tiens, parties depuis l'étalonnage corrigées par le même facteur.
+            var ratio = (double)cc / cal.Matches;
+            var after = Math.Max(0, MatchesAt(DateTime.UtcNow, start) - MatchesAt(cal.At, start)) * s.MatchScale;
+            s.PaceRatio = ratio;
+            s.MatchesBefore = cal.Matches;
+            s.MatchesAfter = (int)Math.Round(after);
+            s.MatchesNow = cal.Matches + s.MatchesAfter;
+            afterCap = after * ratio;
+        }
+        else
+        {
+            var pace = ComputePace(s, start, s.Count.LastOrDefault(m => m.Value >= Cap)?.At ?? last.At);
+            if (pace == null) return;
+            // Mêmes coffres au total ; seules les parties affichées sont corrigées (et donc les coffres par partie).
+            s.PaceRatio = pace.Ratio / s.MatchScale;
+            s.MatchesBefore = (int)Math.Round(pace.Before * s.MatchScale);
+            s.MatchesAfter = (int)Math.Round(Math.Max(0, pace.Now - pace.Before) * s.MatchScale);
+            s.MatchesNow = s.MatchesBefore + s.MatchesAfter;
+            afterCap = Math.Max(0, pace.Now - pace.Before) * pace.Ratio;
+        }
+        // Total = dernier point sûr (plafond ou étalonnage) + parties jouées depuis × coffres par partie.
         s.PaceEstimate = (int)(Math.Round((last.Value + afterCap) / 10) * 10);
         // Répartition par jour selon les parties de chaque jour, recalée pour que la somme des jours = le total.
         var raw = new List<(DateTime Day, double Matches)>();
@@ -175,6 +215,51 @@ public static class Ps5Mode
             var part = rawSum > 0 ? afterCap * n / rawSum : afterCap / raw.Count;
             if (part > 0) s.PerDayEstimated[day] = s.PerDayEstimated.GetValueOrDefault(day) + part;
         }
+    }
+
+    private static DateTime? _seasonStart;
+
+    /// <summary>Écran d'étalonnage : le joueur donne une fois ses vrais chiffres de la saison.</summary>
+    private static void CalibrateScreen()
+    {
+        Frames.Invalidate();
+        ConsoleUi.Screen(L.T("Étalonnage", "Calibration", "Calibración"), "PS5");
+        ConsoleUi.Text(L.T(
+            "Donne tes vrais chiffres de la saison, une seule fois : l'estimation s'en sert ensuite.\n• Parties jouées : Fortnite → Carrière → Statistiques.\n• Coffres ouverts : si tu le sais (sinon laisse vide).",
+            "Give your real numbers for the season, once: the estimate then uses them.\n• Matches played: Fortnite → Career → Stats.\n• Chests opened: if you know it (otherwise leave empty).",
+            "Da tus cifras reales de la temporada, una sola vez: la estimación las usa luego.\n• Partidas jugadas: Fortnite → Trayectoria → Estadísticas.\n• Cofres abiertos: si lo sabes (si no, déjalo vacío)."));
+        ConsoleUi.Blank();
+        if (_seasonStart is DateTime st)
+        {
+            ConsoleUi.Hint(L.T($"Epic voit ≈ {MatchesAt(DateTime.UtcNow, st):0} parties (sans celles d'aujourd'hui, publiées demain).",
+                $"Epic sees ≈ {MatchesAt(DateTime.UtcNow, st):0} matches (without today's, published tomorrow).",
+                $"Epic ve ≈ {MatchesAt(DateTime.UtcNow, st):0} partidas (sin las de hoy, publicadas mañana)."));
+        }
+        if (_data.Calib is { } c)
+        {
+            ConsoleUi.Hint(L.T($"Étalonnage actuel ({c.At.ToLocalTime():dd'/'MM HH:mm}) : {c.Matches} parties, {(c.Chests?.ToString() ?? "coffres inconnus")}. Tape « effacer » pour le supprimer.",
+                $"Current calibration ({c.At.ToLocalTime():dd'/'MM HH:mm}): {c.Matches} matches, {(c.Chests?.ToString() ?? "chests unknown")}. Type \"clear\" to remove it.",
+                $"Calibración actual ({c.At.ToLocalTime():dd'/'MM HH:mm}): {c.Matches} partidas, {(c.Chests?.ToString() ?? "cofres desconocidos")}. Escribe «borrar» para quitarla."));
+        }
+        ConsoleUi.Blank();
+        _data.CalibAsked = true;
+        var m = ConsoleUi.Input(L.T("Parties jouées cette saison (vide = passer) : ", "Matches played this season (empty = skip): ", "Partidas jugadas esta temporada (vacío = omitir): ")).Trim();
+        if (m.Length > 0 && m.ToLowerInvariant() is "effacer" or "clear" or "borrar")
+        {
+            _data.Calib = null;
+        }
+        else if (int.TryParse(m.Replace(" ", "").Replace("\u00A0", ""), out var matches) && matches > 0)
+        {
+            var ch = ConsoleUi.Input(L.T("Coffres ouverts cette saison (vide = je ne sais pas) : ", "Chests opened this season (empty = I don't know): ", "Cofres abiertos esta temporada (vacío = no lo sé): ")).Trim();
+            int? chests = int.TryParse(ch.Replace(" ", "").Replace("\u00A0", ""), out var n) && n > 0 ? n : null;
+            _data.Calib = new Calibration { At = DateTime.UtcNow, Matches = matches, Chests = chests };
+            ConsoleUi.Text(L.T("Enregistré.", "Saved.", "Guardado."), ConsoleColor.Green);
+            Thread.Sleep(800);
+        }
+        Save(DataPath, _data);
+        _nextPoll = DateTime.MinValue;
+        Frames.Invalidate();
+        ConsoleUi.Screen("Chest Counter · PS5");
     }
 
     private static DateTime Max(DateTime a, DateTime b) => a > b ? a : b;
@@ -863,6 +948,11 @@ public static class Ps5Mode
                 polling = null;
                 WriteReport();
                 UpdateOverlay();
+                if (ok && Capped && _data.Calib == null && !_data.CalibAsked && ConsoleUi.Interactive)
+                {
+                    CalibrateScreen(); // proposé une fois, au premier lancement au-dessus du plafond
+                    lastDraw = DateTime.MinValue;
+                }
                 if (ok && !_reportOpened)
                 {
                     _reportOpened = true;
@@ -914,6 +1004,10 @@ public static class Ps5Mode
                             return Exit.Relogin;
                         }
                         Frames.Invalidate();
+                        lastDraw = DateTime.MinValue;
+                        break;
+                    case 'e':
+                        if (polling == null) CalibrateScreen();
                         lastDraw = DateTime.MinValue;
                         break;
                     case 'v':
@@ -1086,6 +1180,7 @@ public static class Ps5Mode
         f.Add(
             new Seg("  [R] ", gold), new Seg(L.T("actualiser", "refresh", "actualizar") + (syncing ? "" : $" ({next}s)") + "   ", mut),
             new Seg("[P] ", gold), new Seg(L.T("page", "page", "página") + "   ", mut),
+            new Seg("[E] ", gold), new Seg(L.T("étalonner", "calibrate", "calibrar") + "   ", mut),
             new Seg("[V] ", gold), new Seg("overlay   ", mut),
             new Seg("[L] ", gold), new Seg(L.T("verrou", "lock", "bloqueo") + "   ", mut),
             new Seg("[C] ", gold), new Seg(L.T("compteur", "counter", "contador") + "   ", mut),
