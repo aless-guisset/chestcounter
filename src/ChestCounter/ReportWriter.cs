@@ -458,16 +458,20 @@ public static class ReportWriter
         }
         sb.Append($"""
             <section class="tiles">
-              <div class="tile hero"><div class="k">{L.T("Coffres cette saison", "Chests this season", "Cofres esta temporada")}</div><div class="v num">{(total == null ? "–" : N(total.Value) + plus)}</div><div class="l">{L.T($"d'après ton compte Epic · +{N(session)} depuis le lancement", $"from your Epic account · +{N(session)} since the tool started", $"según tu cuenta Epic · +{N(session)} desde que se abrió")}</div></div>
+              {(capped && season.PaceEstimate is int heroEst
+                  ? $"""<div class="tile hero"><div class="k">{L.T("Coffres cette saison", "Chests this season", "Cofres esta temporada")}</div><div class="v num">≈ {N(heroEst)}</div><div class="l">{L.T($"estimation : ≈ {season.PaceRatio:0} coffres par partie × {season.MatchesAfter} parties depuis {(season.Calib?.Chests != null ? "ton étalonnage" : "tes 1 000")}", $"estimate: ≈ {season.PaceRatio:0} chests per match × {season.MatchesAfter} matches since {(season.Calib?.Chests != null ? "your calibration" : "your 1,000")}", $"estimación: ≈ {season.PaceRatio:0} cofres por partida × {season.MatchesAfter} partidas desde {(season.Calib?.Chests != null ? "tu calibración" : "tus 1000")}")}</div></div>"""
+                  : $"""<div class="tile hero"><div class="k">{L.T("Coffres cette saison", "Chests this season", "Cofres esta temporada")}</div><div class="v num">{(total == null ? "–" : N(total.Value) + plus)}</div><div class="l">{L.T($"d'après ton compte Epic · +{N(session)} depuis le lancement", $"from your Epic account · +{N(session)} since the tool started", $"según tu cuenta Epic · +{N(session)} desde que se abrió")}</div></div>""")}
               {(capped && Ps5Mode.TodayPending
                   ? Tile("—", L.T("aujourd'hui", "today", "hoy"), L.T("tes parties du jour sont publiées par Epic demain vers 1 h", "today's matches are published by Epic tomorrow around 1 am", "Epic publica las partidas de hoy mañana hacia la 1 h"))
                   : Tile("+" + N(today), L.T("aujourd'hui", "today", "hoy")))}
               {(capped
                   ? Tile("—", L.T("cette session", "this session", "esta sesión"), L.T("pas de suivi en direct au-delà de 1 000", "no live tracking beyond 1,000", "sin seguimiento en directo más allá de 1000"))
                   : Tile("+" + N(session), L.T("cette session", "this session", "esta sesión")))}
-              {Tile(before == null ? "–" : N(before.Value) + plus, L.T("avant le suivi", "before tracking", "antes del seguimiento"), data.Baseline == null ? null : data.Baseline.At.ToLocalTime().ToString("dd'/'MM'/'yyyy", Fr))}
-              {(season.PaceEstimate is int pace
-                  ? Tile("≈ " + N(pace), L.T("coffres estimés aujourd'hui", "chests estimated today", "cofres estimados hoy"), L.T($"≈ {season.PaceRatio:0} par partie × {season.MatchesAfter} parties depuis {(season.Calib?.Chests != null ? "l'étalonnage" : "les 1 000")}", $"≈ {season.PaceRatio:0} per match × {season.MatchesAfter} matches since {(season.Calib?.Chests != null ? "calibration" : "1,000")}", $"≈ {season.PaceRatio:0} por partida × {season.MatchesAfter} partidas desde {(season.Calib?.Chests != null ? "la calibración" : "los 1000")}"))
+              {(capped && season.MatchesNow is int played
+                  ? Tile(N(played), L.T("parties cette saison", "matches this season", "partidas esta temporada"), season.Calib != null ? L.T("d'après Epic, corrigé par ton étalonnage", "from Epic, corrected by your calibration", "según Epic, corregido con tu calibración") : L.T("d'après Epic (sans aujourd'hui)", "from Epic (without today)", "según Epic (sin hoy)"))
+                  : Tile(before == null ? "–" : N(before.Value) + plus, L.T("avant le suivi", "before tracking", "antes del seguimiento"), data.Baseline == null ? null : data.Baseline.At.ToLocalTime().ToString("dd'/'MM'/'yyyy", Fr)))}
+              {(capped && season.PaceEstimate != null
+                  ? Tile(total == null ? "–" : N(total.Value) + plus, L.T("compteur Epic (exact)", "Epic counter (exact)", "contador Epic (exacto)"), L.T("la Chasse au trésor s'arrête à 1 000", "the Treasure Hunt stops at 1,000", "la Caza del tesoro se detiene en 1000"))
                   : season.Estimate is int est
                   ? Tile("≈ " + N(est), L.T("coffres estimés", "estimated chests", "cofres estimados"), L.T($"au {season.EstimateAt!.Value.ToLocalTime():dd'/'MM}, d'après tes coffres rares", $"on {season.EstimateAt!.Value.ToLocalTime():d MMM}, from your rare chests", $"el {season.EstimateAt!.Value.ToLocalTime():dd'/'MM}, según tus cofres raros"))
                   : Tile("+" + N(since), L.T("depuis le suivi", "since tracking", "desde el seguimiento")))}
