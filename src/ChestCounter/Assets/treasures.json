@@ -1,0 +1,158 @@
+{
+  "source": "LED-N/Fortnite-ChestCounter 1.5.0, content/content.json (MIT, (c) LED-N). Copie fixe : cotes et trésors par semaine.",
+  "odds": [
+    {
+      "kind": "outfit",
+      "oneIn": 1562500,
+      "weekly": true
+    },
+    {
+      "kind": "pirate-shop",
+      "oneIn": 137500,
+      "weekly": false
+    },
+    {
+      "kind": "car",
+      "oneIn": 7813,
+      "weekly": true
+    },
+    {
+      "kind": "pickaxe",
+      "oneIn": 568,
+      "weekly": true
+    },
+    {
+      "kind": "jam",
+      "oneIn": 391,
+      "weekly": true
+    },
+    {
+      "kind": "loading",
+      "oneIn": 272,
+      "weekly": true
+    }
+  ],
+  "pirateShop": {
+    "id": "pirate-shop",
+    "kind": "pirate-shop",
+    "name": "Pirate Shop Access",
+    "image": "https://cdn.fortnite.bot/s43treasure/token.webp",
+    "prizeIds": [
+      "9f73f94d-2e61-4523-97d7-d61235d3365e"
+    ]
+  },
+  "weeks": [
+    {
+      "number": 1,
+      "start": "2026-11-01T14:00:00Z",
+      "end": "2026-11-08T14:00:00Z",
+      "prizes": [
+        {
+          "id": "w1-outfit",
+          "kind": "outfit",
+          "name": "Solid Gold A$AP Rocky",
+          "prizeIds": [
+            "DelilahPrize:dpid_item1"
+          ]
+        },
+        {
+          "id": "w1-pickaxe",
+          "kind": "pickaxe",
+          "name": "Solid Gold A$AP Rocky's Gauntlets",
+          "prizeIds": [
+            "DelilahPrize:dpid_item2"
+          ]
+        },
+        {
+          "id": "w1-car",
+          "kind": "car",
+          "name": "Gold Mercedes-AMG G 63 Decal",
+          "prizeIds": [
+            "DelilahPrize:dpid_item5"
+          ]
+        },
+        {
+          "id": "w1-jam",
+          "kind": "jam",
+          "name": "No Trespassing",
+          "prizeIds": [
+            "DelilahPrize:dpid_item3"
+          ]
+        },
+        {
+          "id": "w1-loading",
+          "kind": "loading",
+          "name": "Plunder in Paradise",
+          "prizeIds": [
+            "DelilahPrize:dpid_item4"
+          ]
+        }
+      ]
+    },
+    {
+      "number": 2,
+      "start": "2026-11-08T14:00:00Z",
+      "end": "2026-11-15T14:00:00Z",
+      "prizes": [
+        {
+          "id": "w2-outfit",
+          "kind": "outfit",
+          "name": "Solid Gold Lil Uzi Vert",
+          "prizeIds": [
+            "DelilahPrize:dpid_item14"
+          ]
+        },
+        {
+          "id": "w2-backbling",
+          "kind": "pickaxe",
+          "name": "Diamond and Gold",
+          "prizeIds": [
+            "DelilahPrize:dpid_item15"
+          ]
+        },
+        {
+          "id": "w2-car",
+          "kind": "car",
+          "name": "Gold Cadillac CT5-V Decal",
+          "prizeIds": [
+            "DelilahPrize:dpid_item18"
+          ]
+        },
+        {
+          "id": "w2-jam",
+          "kind": "jam",
+          "name": "London",
+          "prizeIds": [
+            "DelilahPrize:dpid_item16"
+          ]
+        },
+        {
+          "id": "w2-loading",
+          "kind": "loading",
+          "name": "So Kawaii",
+          "prizeIds": [
+            "DelilahPrize:dpid_item17"
+          ]
+        }
+      ]
+    },
+    {
+      "number": 3,
+      "start": "2026-11-15T14:00:00Z",
+      "end": "2026-11-22T14:00:00Z",
+      "prizes": []
+    },
+    {
+      "number": 4,
+      "start": "2026-11-22T14:00:00Z",
+      "end": "2026-11-29T14:00:00Z",
+      "prizes": []
+    },
+    {
+      "number": 5,
+      "start": "2026-11-29T14:00:00Z",
+      "end": "2026-12-05T14:00:00Z",
+      "prizes": []
+    }
+  ]
+}
