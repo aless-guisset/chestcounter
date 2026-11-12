@@ -6,6 +6,7 @@ Ce qu'il y a dans le dossier
 ChestCounterPlus.exe      le compteur (rien a installer)
 Lancer ChestCounter+.bat  ouvre le compteur
 Test XP (40 min).bat      releve l'XP du compte Epic pendant une partie (test)
+Desinstaller ChestCounter LED-N.bat   retire celui de LED-N (pas ChestCounter+)
 LISEZMOI.txt              ce fichier
 
 Installation (tu as deja le ChestCounter de LED-N)
@@ -18,9 +19,9 @@ Installation (tu as deja le ChestCounter de LED-N)
    Windows peut afficher "Windows a protege votre ordinateur" (exe non signe) :
    Informations complementaires -> Executer quand meme.
    Au premier lancement, ton historique de LED-N est COPIE (l'original n'est pas touche).
-4. Ensuite seulement, desinstalle celui de LED-N :
-   dans sa fenetre, onglet Aide -> Desinstaller. Tu peux supprimer son historique,
-   ChestCounter+ en a deja une copie.
+4. Ensuite seulement, desinstalle celui de LED-N : double-clique
+   "Desinstaller ChestCounter LED-N.bat" (ou, dans sa fenetre : Aide -> Desinstaller).
+   Tu peux supprimer son historique, ChestCounter+ en a deja une copie.
 
 Premier lancement
 -----------------
