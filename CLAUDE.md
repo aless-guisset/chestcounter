@@ -11,6 +11,8 @@ console. Utilisateur francophone : UI, messages et commentaires du code ajouté 
 
 ## Build et installation (depuis WSL)
 
+`./deploy.sh` fait tout (compile, ferme l'app si elle tourne, copie l'exe). À la main :
+
 ```
 ~/.dotnet/dotnet publish src/ChestCounter/ChestCounter.csproj -c Release -r win-x64 --self-contained true \
   -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true \
@@ -19,6 +21,8 @@ cp dist/ChestCounter.exe /mnt/c/Users/adm_loc/ChestCounterPC/
 ```
 
 SDK .NET 10 dans `~/.dotnet` (Windows n'a que le SDK 8). Raccourci unique : `Bureau\ChestCounter.bat`.
+Dossier Windows `C:\Users\adm_loc\ChestCounterPC` : exe, `Lancer ChestCounter.bat`, `Test XP (40 min).bat`
+(résultat copié dans `Tests\`), `Mes donnees.bat`, `LISEZMOI.txt`.
 Données réelles : `%APPDATA%\ChestCounter` (mode console dans `ps5\` : auth.json, data.json, report.html, overlay).
 
 **Tests** : toujours avec `--data <dossier de test>` et un `config.json` qui contient `"OpenReportOnStart": false`
