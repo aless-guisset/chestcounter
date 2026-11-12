@@ -108,7 +108,10 @@ public sealed class Config
     public string? LastVersion { get; set; }
 
     /// <summary>Look of the overlay: "hud" (figures only, like the game's HUD) or "classic" (dark card).</summary>
-    public string OverlayStyle { get; set; } = "hud";
+    public string OverlayStyle { get; set; } = "bar";
+
+    /// <summary>La barre déroulante a été mise par défaut une fois (après, le choix du joueur est respecté).</summary>
+    public bool BarIntroduced { get; set; }
     public int? OverlayX { get; set; }
     public int? OverlayY { get; set; }
     /// <summary>Locked overlay = click-through, cannot be moved (Ctrl+Shift+L to toggle).</summary>

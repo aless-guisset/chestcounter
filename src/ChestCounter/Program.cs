@@ -225,7 +225,21 @@ if (previewPath != null)
     // Locked, as in game. Each style in its three states: idle, match in progress, live count.
     NativeOverlay.Start(-20000, -20000, true, (_, _) => { }, _ => { });
     var fakeLive = new MatchRecord { ChestsOpened = 12, TreasureFinds = { new TreasureFind { Item = "Trésor" } } };
-    foreach (var style in NativeOverlay.Styles)
+    // Barre : fermée, Résumé, Coffres (en direct puis confirmée).
+    NativeOverlay.SetStyle("bar");
+    foreach (var (suffix, live, inProgress) in new[] { ("-live", fakeLive, true), ("-done", (MatchRecord?)null, false) })
+    {
+        NativeOverlay.Update(BarModel.ForPc(previewData, live, inProgress, DateTime.UtcNow.AddHours(-1), true, new ObtainedStore(store.Folder), DateTime.UtcNow));
+        for (var panel = 0; panel < 3; panel++)
+        {
+            NativeOverlay.ShowPanel(panel);
+            Thread.Sleep(600);
+            var file = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(previewPath)) ?? ".", $"{Path.GetFileNameWithoutExtension(previewPath)}-bar{suffix}-{panel}.png");
+            Console.WriteLine(NativeOverlay.Snapshot(file) ? file : "échec " + file);
+        }
+    }
+    NativeOverlay.ShowPanel(0);
+    foreach (var style in NativeOverlay.Styles.Where(st => st != "bar"))
     {
         NativeOverlay.SetStyle(style);
         foreach (var (suffix, live, inProgress) in new[] { ("-idle", (MatchRecord?)null, false), ("-inprogress", null, true), ("-live", fakeLive, true) })
@@ -851,6 +865,7 @@ List<(string Label, Action Run, string? About)> Items()
                 {
                     string StyleName(string s) => s == "classic"
                         ? L.T("classique (carte sombre)", "classic (dark card)", "clásico (tarjeta oscura)")
+                        : s == "bar" ? L.T("barre déroulante (Ctrl+Maj+E)", "drop-down bar (Ctrl+Shift+E)", "barra desplegable (Ctrl+Mayús+E)")
                         : L.T("HUD (intégré au jeu)", "HUD (blends into the game)", "HUD (integrado en el juego)");
                     list.Add(Item($"{L.T("Style de l'overlay", "Overlay style", "Estilo del overlay")} : {StyleName(config.OverlayStyle)}", () =>
                     {
@@ -1158,9 +1173,9 @@ void DrawHelp(Frame f)
     {
         f.Blank();
         f.Add("  " + L.T("Overlay", "Overlay", "Overlay"), ConsoleColor.White);
-        Para(L.T("Ctrl+Maj+O : afficher / masquer.  Ctrl+Maj+L : verrouiller / déverrouiller. Ces raccourcis marchent partout, même en jeu.",
-            "Ctrl+Shift+O: show / hide.  Ctrl+Shift+L: lock / unlock. These shortcuts work anywhere, even in game.",
-            "Ctrl+Mayús+O: mostrar / ocultar.  Ctrl+Mayús+L: bloquear / desbloquear. Estos atajos funcionan en cualquier sitio, incluso en el juego."));
+        Para(L.T("Ctrl+Maj+O : afficher / masquer.  Ctrl+Maj+L : verrouiller / déverrouiller.  Ctrl+Maj+E : ouvrir la barre / onglet suivant. Ces raccourcis marchent partout, même en jeu.",
+            "Ctrl+Shift+O: show / hide.  Ctrl+Shift+L: lock / unlock.  Ctrl+Shift+E: open the bar / next tab. These shortcuts work anywhere, even in game.",
+            "Ctrl+Mayús+O: mostrar / ocultar.  Ctrl+Mayús+L: bloquear / desbloquear.  Ctrl+Mayús+E: abrir la barra / pestaña siguiente. Estos atajos funcionan en cualquier sitio, incluso en el juego."));
         Para(L.T("Verrouillé, la souris passe au travers. Déverrouillé, clic gauche maintenu pour le déplacer, clic droit pour le masquer.",
             "Locked, the mouse goes through it. Unlocked, hold the left button to move it, right-click to hide it.",
             "Bloqueado, el ratón lo atraviesa. Desbloqueado, arrástralo con el clic izquierdo; clic derecho para ocultarlo."));
@@ -1221,9 +1236,12 @@ void StartOverlay()
         return;
     }
     NativeOverlay.SetAppearance(config.OverlaySize, config.OverlayOpacity);
-    if (Array.IndexOf(NativeOverlay.Styles, config.OverlayStyle) < 0)
+    if (Array.IndexOf(NativeOverlay.Styles, config.OverlayStyle) < 0 || !config.BarIntroduced)
     {
-        config.OverlayStyle = "hud"; // a style tried in a test version and removed since
+        // La barre déroulante remplace l'overlay précédent (une fois ; les autres styles restent dans les réglages).
+        config.OverlayStyle = "bar";
+        config.BarIntroduced = true;
+        try { store.SaveConfig(config); } catch { /* ignore */ }
     }
     NativeOverlay.SetStyle(config.OverlayStyle);
     NativeOverlay.Start(config.OverlayX, config.OverlayY, config.OverlayLocked,
@@ -1471,12 +1489,31 @@ static void UpdateOverlay(Store store, Config config, TrackerData d, MatchRecord
         if (Ps5Mode.Initialized) Ps5Mode.UpdateOverlay();
         return;
     }
-    var view = OverlayModel.Build(Profiles.View(d, config), live, inProgress);
+    var shown = Profiles.View(d, config);
+    var view = OverlayModel.Build(shown, live, inProgress);
     ReportWriter.WriteOverlay(store, view);
     if (OperatingSystem.IsWindows() && NativeOverlay.IsRunning)
     {
         NativeOverlay.Update(view);
+        NativeOverlay.Update(PcBar(store, config, shown, live, inProgress));
     }
+}
+
+// Barre des coffres (PC) : session = depuis le lancement de Fortnite ; les trésors vus dans les replays sont cochés.
+static BarView PcBar(Store store, Config config, TrackerData shown, MatchRecord? live, bool inProgress)
+{
+    var gameStart = OperatingSystem.IsWindows() ? FortniteWatch.GameStartUtc() : null;
+    if (gameStart != null && gameStart != config.LastGameStartUtc)
+    {
+        config.LastGameStartUtc = gameStart;
+        try { store.SaveConfig(config); } catch { /* ignore */ }
+    }
+    var obtained = new ObtainedStore(store.Folder);
+    foreach (var m in shown.Matches.Where(m => m.TreasureFinds.Count > 0))
+    {
+        obtained.AutoTick(m.TreasureFinds, m.MatchStartUtc ?? m.AnalyzedAtUtc);
+    }
+    return BarModel.ForPc(shown, live, inProgress, Sessions.PcSessionStart(gameStart, config.LastGameStartUtc), gameStart != null, obtained, DateTime.UtcNow);
 }
 
 // Below-normal priority + Windows 11 "efficiency mode" (EcoQoS): the game always comes first.

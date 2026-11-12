@@ -27,6 +27,14 @@ public static class NativeOverlay
     private static IntPtr _hwnd;
     private static volatile OverlayView _view = new("0", null, OverlayModel.LastMatchCaption, false, null, Array.Empty<OverlayRow>());
 
+    // ---- Style « bar » : barre déroulante (fermée → Résumé → Coffres · chances) --------------------------------
+    private static volatile BarView? _bar;
+    /// <summary>0 = fermée (juste le total), 1 = onglet Résumé, 2 = onglet Coffres · chances.</summary>
+    private static volatile int _panel;
+    private static RECT _chevRect, _tab1Rect, _tab2Rect;
+    private static IntPtr _fontBarTotal, _fontBarText, _fontBarBold, _fontBarSmall, _fontBarBadge;
+    private static int _barH, _barTextH, _barSmallH, _barTotalH;
+
     // Layout (computed by Relayout, used by Paint; both on the overlay thread).
     private static int _headerH, _bigH, _captionH, _rowH, _col1W, _col2W, _labelW;
     private static IntPtr _fontHeader, _fontCaption, _fontLabel;
@@ -48,7 +56,7 @@ public static class NativeOverlay
     private static volatile int _opacityPercent = 100;
 
     /// <summary>"hud" (figures only, under the minimap, like the game's HUD) or "classic" (dark card).</summary>
-    private static volatile string _style = "classic";
+    private static volatile string _style = "bar";
     private static IntPtr _fontHudBig, _fontHudSmall;
     private static int _hudBigH, _hudSmallH;
 
@@ -56,19 +64,21 @@ public static class NativeOverlay
     /// anti-aliased edge of the black outline around the text blends into it without any colored fringe.</summary>
     private static readonly uint KeyColor = 0x00010001;
 
-    public static string[] Styles => new[] { "hud", "classic" };
+    public static string[] Styles => new[] { "bar", "hud", "classic" };
 
     /// <summary>Changes the look of the overlay at once.</summary>
     public static void SetStyle(string style)
     {
-        _style = Array.IndexOf(Styles, style) >= 0 ? style : "hud";
+        _style = Array.IndexOf(Styles, style) >= 0 ? style : "bar";
         if (_hwnd != IntPtr.Zero)
         {
             PostMessageW(_hwnd, WM_APP_APPEARANCE, IntPtr.Zero, IntPtr.Zero);
         }
     }
 
-    private static bool Keyed => _style != "classic";
+    private static bool Keyed => _style == "hud";
+
+    private static bool IsBar => _style == "bar";
 
     private const int MinWidth = 240, Pad = 16, ColGap = 36;
 
@@ -111,6 +121,9 @@ public static class NativeOverlay
     /// <summary>True when the global Ctrl+Shift+L shortcut (lock/unlock) could be registered.</summary>
     public static bool LockHotkeyRegistered { get; private set; }
 
+    /// <summary>True when the global Ctrl+Shift+E shortcut (open / switch the bar's tabs) could be registered.</summary>
+    public static bool PanelHotkeyRegistered { get; private set; }
+
     /// <summary>Locked = click-through: the mouse goes through the overlay and it cannot be moved.</summary>
     public static bool IsLocked => _locked;
 
@@ -140,7 +153,7 @@ public static class NativeOverlay
             finally
             {
                 _hwnd = IntPtr.Zero;
-                HotkeyRegistered = LockHotkeyRegistered = false;
+                HotkeyRegistered = LockHotkeyRegistered = PanelHotkeyRegistered = false;
                 _thread = null;
             }
         })
@@ -160,6 +173,34 @@ public static class NativeOverlay
         if (_hwnd != IntPtr.Zero)
         {
             PostMessageW(_hwnd, WM_APP_RELAYOUT, IntPtr.Zero, IntPtr.Zero);
+        }
+    }
+
+    /// <summary>Remplace ce qu'affiche la barre (style « bar »).</summary>
+    public static void Update(BarView bar)
+    {
+        _bar = bar;
+        if (_hwnd != IntPtr.Zero)
+        {
+            PostMessageW(_hwnd, WM_APP_RELAYOUT, IntPtr.Zero, IntPtr.Zero);
+        }
+    }
+
+    /// <summary>Fermée → Résumé → Coffres → fermée (Ctrl+Maj+E, ou l'entrée du menu).</summary>
+    public static void CyclePanel()
+    {
+        if (_hwnd != IntPtr.Zero)
+        {
+            PostMessageW(_hwnd, WM_APP_PANEL, (IntPtr)(-1), IntPtr.Zero);
+        }
+    }
+
+    /// <summary>Ouvre directement un onglet (0 fermé, 1 Résumé, 2 Coffres) : sert aux captures de test.</summary>
+    public static void ShowPanel(int panel)
+    {
+        if (_hwnd != IntPtr.Zero)
+        {
+            PostMessageW(_hwnd, WM_APP_PANEL, (IntPtr)Math.Clamp(panel, 0, 2), IntPtr.Zero);
         }
     }
 
@@ -258,6 +299,7 @@ public static class NativeOverlay
         // Global shortcut, works even when the game has the focus.
         HotkeyRegistered = RegisterHotKey(_hwnd, 1, MOD_CONTROL | MOD_SHIFT | MOD_NOREPEAT, VK_O);
         LockHotkeyRegistered = RegisterHotKey(_hwnd, 2, MOD_CONTROL | MOD_SHIFT | MOD_NOREPEAT, VK_L);
+        PanelHotkeyRegistered = RegisterHotKey(_hwnd, 3, MOD_CONTROL | MOD_SHIFT | MOD_NOREPEAT, VK_E);
         ready.Set();
 
         while (GetMessageW(out var msg, IntPtr.Zero, 0, 0) > 0)
@@ -270,7 +312,7 @@ public static class NativeOverlay
     /// <summary>(Re)creates the fonts for the current display scaling and chosen size.</summary>
     private static void CreateFonts()
     {
-        foreach (var old in new[] { _fontBig, _fontSmall, _fontHeader, _fontCaption, _fontLabel, _fontIcon, _fontHudBig, _fontHudSmall })
+        foreach (var old in new[] { _fontBig, _fontSmall, _fontHeader, _fontCaption, _fontLabel, _fontIcon, _fontHudBig, _fontHudSmall, _fontBarTotal, _fontBarText, _fontBarBold, _fontBarSmall, _fontBarBadge })
         {
             if (old != IntPtr.Zero) DeleteObject(old);
         }
@@ -286,6 +328,11 @@ public static class NativeOverlay
         // background is made transparent).
         _fontHudBig = CreateFontW(-S(40), 0, 0, 0, 700, 1, 0, 0, 1, 0, 0, 4, 0, "Bahnschrift Condensed");
         _fontHudSmall = CreateFontW(-S(18), 0, 0, 0, 600, 1, 0, 0, 1, 0, 0, 4, 0, "Bahnschrift SemiCondensed");
+        _fontBarTotal = CreateFontW(-S(21), 0, 0, 0, 700, 0, 0, 0, 1, 0, 0, 5, 0, "Segoe UI");
+        _fontBarText = CreateFontW(-S(13), 0, 0, 0, 400, 0, 0, 0, 1, 0, 0, 5, 0, "Segoe UI");
+        _fontBarBold = CreateFontW(-S(13), 0, 0, 0, 700, 0, 0, 0, 1, 0, 0, 5, 0, "Segoe UI");
+        _fontBarSmall = CreateFontW(-S(11), 0, 0, 0, 400, 0, 0, 0, 1, 0, 0, 5, 0, "Segoe UI");
+        _fontBarBadge = CreateFontW(-S(10), 0, 0, 0, 700, 0, 0, 0, 1, 0, 0, 5, 0, "Segoe UI");
     }
 
     private static IntPtr WndProc(IntPtr hwnd, uint msg, IntPtr wParam, IntPtr lParam)
@@ -299,7 +346,7 @@ public static class NativeOverlay
                 GetWindowRect(hwnd, out var wr);
                 var px = (short)((long)lParam & 0xFFFF) - wr.Left;
                 var py = (short)(((long)lParam >> 16) & 0xFFFF) - wr.Top;
-                var onButton = px >= _lockRect.Left && px < _lockRect.Right && py >= _lockRect.Top && py < _lockRect.Bottom;
+                var onButton = In(_lockRect, px, py) || (IsBar && (In(_chevRect, px, py) || (_panel > 0 && (In(_tab1Rect, px, py) || In(_tab2Rect, px, py)))));
                 return (IntPtr)(onButton ? HTCLIENT : HTCAPTION);
             }
 
@@ -312,7 +359,18 @@ public static class NativeOverlay
                 break;
 
             case WM_LBUTTONUP:
-                ApplyLock(hwnd, true, notify: true);
+            {
+                var cx = (short)((long)lParam & 0xFFFF);
+                var cy = (short)(((long)lParam >> 16) & 0xFFFF);
+                if (IsBar && In(_chevRect, cx, cy)) SetPanel(hwnd, -1);
+                else if (IsBar && _panel > 0 && In(_tab1Rect, cx, cy)) SetPanel(hwnd, 1);
+                else if (IsBar && _panel > 0 && In(_tab2Rect, cx, cy)) SetPanel(hwnd, 2);
+                else ApplyLock(hwnd, true, notify: true);
+                return IntPtr.Zero;
+            }
+
+            case WM_APP_PANEL:
+                SetPanel(hwnd, (int)(long)wParam);
                 return IntPtr.Zero;
 
             case WM_APP_LOCK:
@@ -327,6 +385,11 @@ public static class NativeOverlay
                 if ((long)wParam == 2)
                 {
                     ApplyLock(hwnd, !_locked, notify: true);
+                }
+                else if ((long)wParam == 3)
+                {
+                    if (!IsWindowVisible(hwnd)) SetVisible(hwnd, true);
+                    SetPanel(hwnd, -1);
                 }
                 else
                 {
@@ -371,6 +434,7 @@ public static class NativeOverlay
             case WM_DESTROY:
                 UnregisterHotKey(hwnd, 1);
                 UnregisterHotKey(hwnd, 2);
+                UnregisterHotKey(hwnd, 3);
                 PostQuitMessage(0);
                 return IntPtr.Zero;
         }
@@ -439,6 +503,11 @@ public static class NativeOverlay
     /// <summary>Measures the text and resizes the window (and its rounded region) to fit it.</summary>
     private static void Relayout(IntPtr hwnd)
     {
+        if (IsBar)
+        {
+            RelayoutBar(hwnd);
+            return;
+        }
         if (Keyed)
         {
             RelayoutStyled(hwnd);
@@ -532,6 +601,11 @@ public static class NativeOverlay
 
     private static void PaintTo(IntPtr hwnd, IntPtr hdc)
     {
+        if (IsBar)
+        {
+            PaintBar(hwnd, hdc);
+            return;
+        }
         if (Keyed)
         {
             PaintStyled(hwnd, hdc);
@@ -598,6 +672,218 @@ public static class NativeOverlay
         }
     }
 
+
+    // ---- Style « bar » : barre des coffres déroulante ------------------------------------------------------------
+    //
+    //   [coffre] 1 432 coffres [● EN DIRECT]        ▼
+    //   ─────────────────────────────────────────────
+    //   [ Résumé ] [ Coffres · chances ]
+    //   Partie en cours                            7
+    //   Session                                   31
+    //   3 parties · moy. 10
+    //   ...
+
+    private const int BarWidth = 270;
+
+    private static bool In(RECT r, int x, int y) => x >= r.Left && x < r.Right && y >= r.Top && y < r.Bottom;
+
+    /// <summary>-1 = onglet suivant (fermée → Résumé → Coffres → fermée), sinon l'onglet demandé.</summary>
+    private static void SetPanel(IntPtr hwnd, int panel)
+    {
+        _panel = panel < 0 ? (_panel + 1) % 3 : panel;
+        _stableW = 0;
+        Relayout(hwnd);
+    }
+
+    private static string BarCaption => L.T("coffres", "chests", "cofres");
+
+    private static int BarContentHeight(BarView b)
+    {
+        if (_panel == 1)
+        {
+            return b.Summary.Sum(l => _barTextH + (l.Detail != null ? _barSmallH : 0) + Sc(7));
+        }
+        var lines = b.Chances.Count == 0 ? _barTextH + Sc(7) : b.Chances.Sum(_ => _barTextH + Sc(3) + Sc(4) + Sc(3) + _barSmallH + Sc(7));
+        return lines + _barSmallH + Sc(4); // + la ligne d'aide
+    }
+
+    private static void RelayoutBar(IntPtr hwnd)
+    {
+        var b = _bar ?? new BarView("0", BarState.Confirmed, "", Array.Empty<BarLine>(), Array.Empty<ChanceLine>(), null);
+        var hdc = GetDC(hwnd);
+        try
+        {
+            TextWidth(hdc, _fontBarText, "Ag", out _barTextH);
+            TextWidth(hdc, _fontBarSmall, "Ag", out _barSmallH);
+            var totalW = TextWidth(hdc, _fontBarTotal, b.Total, out _barTotalH);
+            var badgeW = b.Badge.Length > 0 ? TextWidth(hdc, _fontBarBadge, b.Badge, out _) + Sc(12) : 0;
+            var needed = Sc(11) + Sc(18) + Sc(8) + totalW + Sc(6) + TextWidth(hdc, _fontBarText, BarCaption, out _) + Sc(6) + badgeW + Sc(8) + Sc(14) + Sc(22) + Sc(6);
+            var w = Math.Max(_stableW, Math.Max(Sc(BarWidth), needed));
+            _stableW = w;
+            _barH = Math.Max(Sc(40), _barTotalH + Sc(12));
+            var h = _barH;
+            if (_panel > 0)
+            {
+                h += 1 + Sc(8) + Sc(24) + Sc(8) + BarContentHeight(b) + Sc(6);
+            }
+            _lockRect = _locked ? new RECT() : new RECT { Left = w - Sc(28), Top = 0, Right = w - Sc(6), Bottom = _barH };
+            var chevRight = _locked ? w - Sc(6) : _lockRect.Left;
+            _chevRect = new RECT { Left = chevRight - Sc(24), Top = 0, Right = chevRight, Bottom = _barH };
+            var tabTop = _barH + 1 + Sc(8);
+            var mid = w / 2;
+            _tab1Rect = new RECT { Left = Sc(11), Top = tabTop, Right = mid - Sc(2), Bottom = tabTop + Sc(24) };
+            _tab2Rect = new RECT { Left = mid + Sc(2), Top = tabTop, Right = w - Sc(11), Bottom = tabTop + Sc(24) };
+
+            GetWindowRect(hwnd, out var cur);
+            int nx = cur.Left, ny = cur.Top;
+            var mi = new MONITORINFO { cbSize = (uint)Marshal.SizeOf<MONITORINFO>() };
+            if (!_offscreen && GetMonitorInfoW(MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST), ref mi))
+            {
+                var work = mi.rcWork;
+                if (cur.Right - cur.Left > 0 && (cur.Left + cur.Right) / 2 > (work.Left + work.Right) / 2)
+                {
+                    nx = cur.Right - w; // ancrée à droite sur la moitié droite de l'écran
+                }
+                nx = Math.Max(work.Left, Math.Min(nx, work.Right - w));
+                ny = Math.Max(work.Top, Math.Min(ny, work.Bottom - h));
+            }
+            SetWindowPos(hwnd, HWND_TOPMOST, nx, ny, w, h, SWP_NOACTIVATE);
+            SetWindowRgn(hwnd, CreateRoundRectRgn(0, 0, w + 1, h + 1, Sc(14), Sc(14)), true);
+            if (nx != cur.Left || ny != cur.Top)
+            {
+                _onMoved?.Invoke(nx, ny);
+            }
+        }
+        finally
+        {
+            ReleaseDC(hwnd, hdc);
+        }
+        InvalidateRect(hwnd, IntPtr.Zero, true);
+        UpdateWindow(hwnd);
+    }
+
+    private static void Fill(IntPtr hdc, int l, int t, int r, int btm, uint color, int radius = 0)
+    {
+        var brush = CreateSolidBrush(color);
+        if (radius <= 0)
+        {
+            var rc = new RECT { Left = l, Top = t, Right = r, Bottom = btm };
+            FillRect(hdc, ref rc, brush);
+        }
+        else
+        {
+            var pen = CreatePen(0, 1, color);
+            var oldPen = SelectObject(hdc, pen);
+            var oldBrush = SelectObject(hdc, brush);
+            RoundRect(hdc, l, t, r, btm, radius, radius);
+            SelectObject(hdc, oldBrush);
+            SelectObject(hdc, oldPen);
+            DeleteObject(pen);
+        }
+        DeleteObject(brush);
+    }
+
+    private static void PaintBar(IntPtr hwnd, IntPtr hdc)
+    {
+        var b = _bar ?? new BarView("0", BarState.Confirmed, "", Array.Empty<BarLine>(), Array.Empty<ChanceLine>(), null);
+        GetClientRect(hwnd, out var rc);
+        // Couleurs de la maquette validée.
+        uint bg = Rgb(11, 15, 24), gold = Rgb(255, 214, 102), label = Rgb(184, 191, 204), value = Rgb(238, 238, 255),
+            dim = Rgb(125, 133, 151), muted = Rgb(154, 163, 181), line = Rgb(30, 34, 42);
+        Fill(hdc, 0, 0, rc.Right, rc.Bottom, bg);
+        SetBkMode(hdc, TRANSPARENT);
+        var border = CreateRoundRectRgn(0, 0, rc.Right + 1, rc.Bottom + 1, Sc(14), Sc(14));
+        var borderBrush = CreateSolidBrush(Rgb(96, 85, 51));
+        FrameRgn(hdc, border, borderBrush, 1, 1);
+        DeleteObject(borderBrush);
+        DeleteObject(border);
+
+        // Barre : coffre, total, « coffres », badge, chevron (et cadenas quand déverrouillée).
+        var x = Sc(11);
+        var ih = Sc(15);
+        var iw = Sc(18);
+        Chest(hdc, x, (_barH - ih) / 2, iw, ih, gold, Rgb(224, 165, 38), Rgb(60, 40, 10), Rgb(60, 40, 10));
+        x += iw + Sc(8);
+        var totalW = TextWidth(hdc, _fontBarTotal, b.Total, out _);
+        Text(hdc, _fontBarTotal, gold, b.Total, x, 0, x + totalW + Sc(2), _barH, DT_VCENTER);
+        x += totalW + Sc(6);
+        var capW = TextWidth(hdc, _fontBarText, BarCaption, out _);
+        Text(hdc, _fontBarText, muted, BarCaption, x, Sc(1), x + capW + Sc(2), _barH, DT_VCENTER);
+        x += capW + Sc(6);
+        if (b.Badge.Length > 0)
+        {
+            var ok = b.State is BarState.Confirmed or BarState.EstimateConfirmed;
+            var bw = TextWidth(hdc, _fontBarBadge, b.Badge, out var bh) + Sc(12);
+            var by = (_barH - bh - Sc(4)) / 2;
+            Fill(hdc, x, by, x + bw, by + bh + Sc(4), ok ? Rgb(29, 52, 44) : Rgb(31, 43, 66), Sc(10));
+            Text(hdc, _fontBarBadge, ok ? Rgb(141, 224, 165) : Rgb(156, 192, 255), b.Badge, x, by, x + bw, by + bh + Sc(4), DT_CENTER | DT_VCENTER);
+        }
+        Text(hdc, _fontBarSmall, muted, _panel == 0 ? "▼" : "▲", _chevRect.Left, 0, _chevRect.Right, _barH, DT_CENTER | DT_VCENTER);
+        if (!_locked)
+        {
+            SelectObject(hdc, _fontIcon);
+            SetTextColor(hdc, Rgb(200, 200, 208));
+            var lr = _lockRect;
+            DrawTextW(hdc, "", -1, ref lr, DT_SINGLELINE | DT_CENTER | DT_VCENTER | DT_NOPREFIX);
+        }
+        if (_panel == 0)
+        {
+            return;
+        }
+
+        // Onglets
+        var y = _barH;
+        Fill(hdc, 0, y, rc.Right, y + 1, line);
+        foreach (var (r, text, on) in new[]
+        {
+            (_tab1Rect, L.T("Résumé", "Summary", "Resumen"), _panel == 1),
+            (_tab2Rect, L.T("Coffres · chances", "Chests · chances", "Cofres · probabilidades"), _panel == 2),
+        })
+        {
+            Fill(hdc, r.Left, r.Top, r.Right, r.Bottom, on ? Rgb(50, 47, 36) : Rgb(20, 24, 33), Sc(8));
+            Text(hdc, on ? _fontBarBold : _fontBarText, on ? gold : muted, text, r.Left, r.Top, r.Right, r.Bottom, DT_CENTER | DT_VCENTER);
+        }
+        y = _tab1Rect.Bottom + Sc(8);
+        int left = Sc(11), right = rc.Right - Sc(11);
+
+        if (_panel == 1)
+        {
+            foreach (var l in b.Summary)
+            {
+                Text(hdc, _fontBarText, label, l.Label, left, y, right, y + _barTextH);
+                Text(hdc, _fontBarBold, value, l.Value, left, y, right, y + _barTextH, DT_RIGHT);
+                y += _barTextH;
+                if (l.Detail != null)
+                {
+                    Text(hdc, _fontBarSmall, dim, l.Detail, left, y, right, y + _barSmallH);
+                    y += _barSmallH;
+                }
+                y += Sc(7);
+            }
+            return;
+        }
+
+        if (b.Chances.Count == 0)
+        {
+            Text(hdc, _fontBarText, label, b.ChancesEmpty ?? "", left, y, right, y + _barTextH);
+            y += _barTextH + Sc(7);
+        }
+        foreach (var c in b.Chances)
+        {
+            var pw = TextWidth(hdc, _fontBarBold, c.Percent, out _);
+            Text(hdc, _fontBarText, Rgb(223, 227, 234), c.Label, left, y, right - pw - Sc(8), y + _barTextH);
+            Text(hdc, _fontBarBold, gold, c.Percent, left, y, right, y + _barTextH, DT_RIGHT);
+            y += _barTextH + Sc(3);
+            Fill(hdc, left, y, right, y + Sc(4), Rgb(28, 32, 41));
+            var fillW = (int)Math.Round((right - left) * Math.Clamp(c.Fill, 0, 1));
+            Fill(hdc, left, y, left + Math.Max(Sc(2), fillW), y + Sc(4), gold);
+            y += Sc(4) + Sc(3);
+            Text(hdc, _fontBarSmall, dim, c.Odds, left, y, right, y + _barSmallH, DT_END_ELLIPSIS);
+            y += _barSmallH + Sc(7);
+        }
+        Text(hdc, _fontBarSmall, dim, L.T("Ce que tu as eu : « Trésors obtenus » dans le compteur.", "Got one? \"Treasures obtained\" in the counter.", "¿Ya lo tienes? «Tesoros conseguidos» en el contador."),
+            left, y, right, y + _barSmallH, DT_END_ELLIPSIS);
+    }
 
     // ---- "hud" style: figures only, outlined like the game's own HUD, right-aligned under the minimap -------------
     //
@@ -849,11 +1135,11 @@ public static class NativeOverlay
     private const uint LWA_ALPHA = 0x2, LWA_COLORKEY = 0x1;
     private const int SW_HIDE = 0, SW_SHOWNOACTIVATE = 4;
     private const uint WM_DESTROY = 0x0002, WM_PAINT = 0x000F, WM_NCHITTEST = 0x0084, WM_NCRBUTTONUP = 0x00A5,
-        WM_TIMER = 0x0113, WM_EXITSIZEMOVE = 0x0232, WM_APP_TOGGLE = 0x8001, WM_PRINTCLIENT = 0x0318, WM_APP_RELAYOUT = 0x8002, WM_HOTKEY = 0x0312, WM_APP_APPEARANCE = 0x8004, WM_APP_STOP = 0x8005;
-    private const uint MOD_CONTROL = 0x2, MOD_SHIFT = 0x4, MOD_NOREPEAT = 0x4000, VK_O = 0x4F;
+        WM_TIMER = 0x0113, WM_EXITSIZEMOVE = 0x0232, WM_APP_TOGGLE = 0x8001, WM_PRINTCLIENT = 0x0318, WM_APP_RELAYOUT = 0x8002, WM_HOTKEY = 0x0312, WM_APP_APPEARANCE = 0x8004, WM_APP_STOP = 0x8005, WM_APP_PANEL = 0x8006;
+    private const uint MOD_CONTROL = 0x2, MOD_SHIFT = 0x4, MOD_NOREPEAT = 0x4000, VK_O = 0x4F, VK_E = 0x45;
     private const int HTCAPTION = 2;
     private const int TRANSPARENT = 1, LOGPIXELSY = 90;
-    private const uint DT_LEFT = 0x0, DT_CENTER = 0x1, DT_RIGHT = 0x2, DT_VCENTER = 0x4, DT_BOTTOM = 0x8, DT_SINGLELINE = 0x20, DT_CALCRECT = 0x400, DT_NOPREFIX = 0x800, DT_NOCLIP = 0x100;
+    private const uint DT_LEFT = 0x0, DT_CENTER = 0x1, DT_RIGHT = 0x2, DT_VCENTER = 0x4, DT_BOTTOM = 0x8, DT_SINGLELINE = 0x20, DT_CALCRECT = 0x400, DT_NOPREFIX = 0x800, DT_NOCLIP = 0x100, DT_END_ELLIPSIS = 0x8000;
     private const uint SWP_NOSIZE = 0x1, SWP_NOMOVE = 0x2, SWP_NOACTIVATE = 0x10;
     private static readonly IntPtr HWND_TOPMOST = new(-1);
     private static readonly IntPtr IDC_SIZEALL = new(32646);

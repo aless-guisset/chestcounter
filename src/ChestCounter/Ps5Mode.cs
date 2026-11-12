@@ -1102,6 +1102,31 @@ public static class Ps5Mode
         }
     }
 
+    /// <summary>
+    /// Barre des coffres en mode console. Session = depuis le démarrage de ChestCounter. Au-delà de 1 000, tout est estimé
+    /// (« ≈ ») et la session est inconnue (« — ») : Epic ne publie rien pendant la partie.
+    /// </summary>
+    public static BarView Bar()
+    {
+        var total = _tracked?.Value;
+        var today = DateTime.Now.Date;
+        var todayExact = _season.PerDayExact.GetValueOrDefault(today);
+        var todayEst = _season.PerDayEstimated.GetValueOrDefault(today);
+        int? shownTotal = Capped && _season.PaceEstimate is int est ? est : total;
+        int? todayValue = Capped && TodayPending && todayExact < 0.5 ? null : (int)Math.Round(todayExact + todayEst);
+        var sessionKnown = !Capped && _tracked != null && _sessionStart != null;
+        var session = sessionKnown ? _tracked!.Value - _sessionStart!.Value : 0;
+
+        var weekStartLocal = TreasureOdds.CurrentWeek(DateTime.UtcNow).StartUtc.ToLocalTime().Date;
+        double weekExact = _season.PerDayExact.Where(kv => kv.Key >= weekStartLocal).Sum(kv => kv.Value);
+        double weekEst = _season.PerDayEstimated.Where(kv => kv.Key >= weekStartLocal).Sum(kv => kv.Value);
+        var weekChests = (int)Math.Round(weekExact + weekEst);
+        var seasonChests = shownTotal ?? 0;
+
+        return BarModel.ForPs5(shownTotal, Capped, todayValue, todayEst >= 0.5, session, sessionKnown,
+            weekChests, Capped || weekEst >= 0.5, seasonChests, new ObtainedStore(_folder), DateTime.UtcNow);
+    }
+
     // ---- Overlay (fenêtre de ChestCounter, alimentée par le compte Epic) ---------------------------------------
 
     public static void UpdateOverlay()
@@ -1130,6 +1155,7 @@ public static class Ps5Mode
         };
         NativeOverlay.Update(new OverlayView(totalText, null, L.T("cette saison", "this season", "esta temporada"), false, "PS5", rows,
             Treasures: epicText, Session: sessionText, Last: todayText, LastLabel: L.T("Aujourd'hui", "Today", "Hoy"), ThirdLabel: "Epic"));
+        NativeOverlay.Update(Bar());
         // Test : CHESTCOUNTER_OVERLAY_SNAPSHOT=<fichier.png> enregistre l'overlay tel qu'il est dessiné.
         if (Environment.GetEnvironmentVariable("CHESTCOUNTER_OVERLAY_SNAPSHOT") is { Length: > 0 } snap)
         {
