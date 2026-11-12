@@ -10,6 +10,7 @@ rm -rf "$OUT" && mkdir -p "$OUT"
 cp dist/ChestCounterPlus.exe "$OUT/"
 crlf() { sed 's/\r*$/\r/' ; }
 crlf < packaging/LISEZMOI.txt > "$OUT/LISEZMOI.txt"
+crlf < packaging/Desinstaller-ChestCounter-LED-N.bat > "$OUT/Desinstaller ChestCounter LED-N.bat"
 printf '@echo off\nstart "" "%%~dp0ChestCounterPlus.exe"\n' | crlf > "$OUT/Lancer ChestCounter+.bat"
 crlf > "$OUT/Test XP (40 min).bat" <<'BAT'
 @echo off
