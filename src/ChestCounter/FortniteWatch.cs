@@ -19,14 +19,22 @@ public static class FortniteWatch
     private static readonly string[] GameProcesses =
         { Environment.GetEnvironmentVariable("CHESTCOUNTER_GAME_PROCESS") is { Length: > 0 } test ? test : "FortniteClient-Win64-Shipping" };
 
-    /// <summary>Heure de lancement de Fortnite (le plus ancien processus du jeu), en UTC ; null s'il ne tourne pas.</summary>
+    /// <summary>Premier moment où le jeu a été vu sans pouvoir lire son heure de lancement (anti-triche).</summary>
+    private static DateTime? _seenSince;
+
+    /// <summary>
+    /// Heure de lancement de Fortnite (le plus ancien processus du jeu), en UTC ; null s'il ne tourne pas. Si l'heure
+    /// n'est pas lisible (accès refusé), le premier moment où le compteur l'a vu tourner la remplace.
+    /// </summary>
     public static DateTime? GameStartUtc()
     {
         DateTime? first = null;
+        var found = false;
         foreach (var name in GameProcesses)
         {
             foreach (var p in Process.GetProcessesByName(name))
             {
+                found = true;
                 try
                 {
                     var t = p.StartTime.ToUniversalTime();
@@ -42,7 +50,12 @@ public static class FortniteWatch
                 }
             }
         }
-        return first;
+        if (!found)
+        {
+            _seenSince = null;
+            return null;
+        }
+        return first ?? (_seenSince ??= DateTime.UtcNow);
     }
 
     public static bool IsFortniteRunning()
