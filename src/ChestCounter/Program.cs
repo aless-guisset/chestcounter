@@ -106,6 +106,11 @@ if (args.Contains("--ps5-stats"))
 {
     return Ps5Mode.DumpStats(dataDir);
 }
+if (Array.IndexOf(args, "--ps5-xp") is var xpAt and >= 0)
+{
+    var minutes = xpAt + 1 < args.Length && int.TryParse(args[xpAt + 1], out var m) && m > 0 ? m : 60;
+    return Ps5Mode.DumpXp(dataDir, minutes);
+}
 if (args.Contains("--ps5-quests"))
 {
     return Ps5Mode.DumpQuests(dataDir);

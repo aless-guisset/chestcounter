@@ -3,7 +3,8 @@
 Copie de [LED-N/Fortnite-ChestCounter](https://github.com/LED-N/Fortnite-ChestCounter) (MIT, v1.4.0) avec un mode
 console. Utilisateur francophone : UI, messages et commentaires du code ajouté en français.
 
-- Remote `upstream` = LED-N : **ne jamais pousser dessus**. Branche de travail : `ps5`.
+- Notre dépôt : `origin` = `aless-guisset/chestcounter` (privé). Remote `upstream` = LED-N : **ne jamais pousser
+  dessus**. Branche de travail : `ps5`. LED-N a sorti une 1.5.0 (fenêtre WebView2, console supprimée) : pas fusionnée.
 - Une seule app : plateforme **PC** (replays, code d'origine) ou **Console** (`Ps5Mode.cs`, compte Epic), choisie au
   premier lancement, modifiable dans Réglages. `--ps5` / `--pc` la forcent.
 - Mises à jour LED-N coupées (`AppInfo.UpdatesEnabled = false`) : elles remplaceraient l'exe et effaceraient le mode console.
@@ -38,4 +39,8 @@ de la connexion Epic). Ne jamais laisser de faux chiffres (étalonnage bidon) vi
   via le palier coffres rares), étalonnage optionnel donné par le joueur (parties, coffres). Pas de suivi en direct.
 - Les noms de quêtes changent peut-être à chaque saison : adapter `TierRe` / `ChestRe` si les paliers ne sont plus reconnus.
 
-Outils de diagnostic : `--ps5-quests` (attributs bruts des quêtes) et `--ps5-stats` (parties par jour UTC), écrits dans `ps5\`.
+- **Piste abandonnée** : enregistrement du son (retiré). **Piste en cours** : l'XP affichée à l'ouverture d'un coffre.
+  Profil athena : `stats.xp`, `book_xp`, `level`, `book_level`, `accountLevel`. Reste à savoir si ça bouge pendant la partie.
+
+Outils de diagnostic : `--ps5-quests` (attributs bruts des quêtes), `--ps5-stats` (parties par jour UTC) et
+`--ps5-xp [minutes]` (relève le profil toutes les 30 s et note ce qui change, dans `ps5\xp.txt`).

@@ -484,7 +484,77 @@ public static class Ps5Mode
         return 0;
     }
 
-    private const string StatsUrl = "https://statsproxy-public-service-live.ol.epicgames.com/statsproxy/api/statsv2/account/";
+    /// <summary>
+    /// --ps5-xp [minutes] : relève le profil athena toutes les 30 s (60 min par défaut) et écrit dans ps5\xp.txt chaque
+    /// valeur qui change (XP, niveau, compteurs de quêtes). But : savoir si Epic met à jour l'XP / les quêtes pendant
+    /// la partie (piste « +XP à l'ouverture d'un coffre ») ou seulement à la fin.
+    /// </summary>
+    public static int DumpXp(string dataDir, int minutes)
+    {
+        _folder = Path.Combine(dataDir, "ps5");
+        Directory.CreateDirectory(_folder);
+        ImportFromNodeTool();
+        if (!EnsureSession()) return 1;
+        var path = Path.Combine(_folder, "xp.txt");
+        File.WriteAllText(path, $"== relevé du profil toutes les 30 s pendant {minutes} min, début {DateTime.Now:yyyy-MM-dd HH:mm:ss} ==\n");
+        void Log(string line)
+        {
+            var l = $"{DateTime.Now:HH:mm:ss}  {line}";
+            File.AppendAllText(path, l + "\n");
+            try { Console.WriteLine(l); } catch { }
+        }
+
+        Dictionary<string, string>? previous = null;
+        var end = DateTime.UtcNow.AddMinutes(minutes);
+        while (DateTime.UtcNow < end)
+        {
+            try
+            {
+                var profile = QueryProfile();
+                var now = new Dictionary<string, string>();
+                if (profile["stats"]?["attributes"] is JsonObject stats)
+                {
+                    foreach (var (k, v) in stats)
+                    {
+                        if (v is JsonValue jv && jv.TryGetValue<long>(out var n)) now["stats." + k] = n.ToString();
+                    }
+                }
+                if (profile["items"] is JsonObject items)
+                {
+                    foreach (var (_, item) in items)
+                    {
+                        var tid = (string?)item?["templateId"] ?? "";
+                        if (!tid.StartsWith("quest:", StringComparison.OrdinalIgnoreCase) || item?["attributes"] is not JsonObject attrs) continue;
+                        foreach (var (k, v) in attrs)
+                        {
+                            if (k.StartsWith("completion_") && v is JsonValue jv && jv.TryGetValue<long>(out var n)) now[$"{tid[6..]}.{k[11..]}"] = n.ToString();
+                        }
+                    }
+                }
+                if (previous == null)
+                {
+                    var xp = now.Where(kv => kv.Key.Contains("xp", StringComparison.OrdinalIgnoreCase) || kv.Key.Contains("level", StringComparison.OrdinalIgnoreCase));
+                    Log($"départ (révision {profile["rvn"]}) : " + string.Join("  ", xp.Select(kv => $"{kv.Key}={kv.Value}")));
+                }
+                else
+                {
+                    var changes = now.Where(kv => !previous.TryGetValue(kv.Key, out var old) || old != kv.Value)
+                        .Select(kv => $"{kv.Key}: {previous.GetValueOrDefault(kv.Key, "∅")} → {kv.Value}").ToList();
+                    if (changes.Count > 0) Log($"révision {profile["rvn"]} : " + string.Join("  |  ", changes));
+                }
+                previous = now;
+            }
+            catch (Exception e)
+            {
+                Log("erreur " + e.Message);
+            }
+            Thread.Sleep(TimeSpan.FromSeconds(30));
+        }
+        Log("fin du relevé");
+        return 0;
+    }
+
+    private const string StatsUrl ="https://statsproxy-public-service-live.ol.epicgames.com/statsproxy/api/statsv2/account/";
 
     /// <summary>Parties BR jouées entre deux instants (statsv2 avec fenêtre de temps), ou null si indisponible.</summary>
     public static int? MatchesBetween(DateTime fromUtc, DateTime toUtc)
