@@ -787,6 +787,13 @@ List<(string Label, Action Run, string? About)> Items()
                         "Once: your number of matches this season (Career in Fortnite) and your chests if you know them. The estimate beyond 1,000 uses them.",
                         "Una vez: tus partidas de la temporada (Trayectoria en Fortnite) y tus cofres si los sabes. La estimación más allá de 1000 los usa.")));
             }
+            list.Add(Item(L.T("Trésors obtenus (cocher)", "Treasures obtained (tick)", "Tesoros conseguidos (marcar)"), () =>
+            {
+                SubScreen(() => TreasureChecklist.Run(config.IsConsole ? Ps5Mode.Folder : store.Folder, appName));
+                UpdateOverlay(store, config, data, tracker.LiveMatch, tracker.IsLive);
+            }, L.T("Coche les trésors de la semaine que tu as déjà eus : ils disparaissent de la page Coffres · chances de la barre.",
+                "Tick this week's treasures you already got: they leave the bar's Chests · chances page.",
+                "Marca los tesoros de la semana que ya tienes: desaparecen de la página Cofres · probabilidades de la barra.")));
             if (OperatingSystem.IsWindows() && NativeOverlay.IsRunning)
             {
                 list.Add(Item(NativeOverlay.IsVisible ? L.T("Masquer l'overlay", "Hide the overlay", "Ocultar el overlay") : L.T("Afficher l'overlay", "Show the overlay", "Mostrar el overlay"),
