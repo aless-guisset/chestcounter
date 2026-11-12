@@ -40,6 +40,16 @@ public class BarModelTests : IDisposable
     }
 
     [Fact]
+    public void Build_PcInProgressUnreadable()
+    {
+        // Replay verrouillé jusqu'à la fin de la partie : pas de chiffre, donc pas « EN DIRECT ».
+        var v = BarModel.ForPc(new TrackerData(), null, true, null, true, new ObtainedStore(_dir), Week2);
+        Assert.Equal(BarState.Live, v.State);
+        Assert.Equal("● PARTIE EN COURS", v.Badge);
+        Assert.Equal("…", v.Summary.Single(l => l.Label == "Partie en cours").Value);
+    }
+
+    [Fact]
     public void Build_PcConfirmed()
     {
         var d = new TrackerData();

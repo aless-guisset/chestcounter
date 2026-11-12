@@ -51,8 +51,10 @@ public static class BarModel
         var weekChests = d.Matches.Where(m => Sessions.EndUtc(m) >= week.StartUtc && Sessions.EndUtc(m) < week.EndUtc).Sum(m => m.ChestsOpened) + liveChests;
         var (chances, empty) = Chances(week, weekChests, total, obtained);
 
+        // « EN DIRECT » seulement quand le replay en cours est lisible ; sinon Fortnite le garde verrouillé jusqu'à la fin.
+        var liveBadge = live != null ? L.T("● EN DIRECT", "● LIVE", "● EN DIRECTO") : L.T("● PARTIE EN COURS", "● MATCH IN PROGRESS", "● PARTIDA EN CURSO");
         return inProgress
-            ? new BarView(L.N(total), BarState.Live, L.T("● EN DIRECT", "● LIVE", "● EN DIRECTO"), lines, chances, empty)
+            ? new BarView(L.N(total), BarState.Live, liveBadge, lines, chances, empty)
             : new BarView(L.N(total), BarState.Confirmed, L.T("✓ CONFIRMÉ (replay)", "✓ CONFIRMED (replay)", "✓ CONFIRMADO (repetición)"), lines, chances, empty);
     }
 
