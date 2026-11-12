@@ -24,6 +24,13 @@ public static class BarModel
         {
             lines.Add(new BarLine(L.T("Partie en cours", "Current match", "Partida actual"), live != null ? L.N(live.ChestsOpened) : "…"));
         }
+        else if (d.Matches.Count > 0)
+        {
+            // Entre deux parties : les coffres de la partie qui vient de finir, avec son heure de fin.
+            var last = d.Matches.MaxBy(Sessions.EndUtc)!;
+            lines.Add(new BarLine(L.T("Dernière partie", "Last match", "Última partida"), L.N(last.ChestsOpened),
+                L.T($"finie à {Sessions.EndUtc(last).ToLocalTime():HH:mm}", $"ended at {Sessions.EndUtc(last).ToLocalTime():HH:mm}", $"terminó a las {Sessions.EndUtc(last).ToLocalTime():HH:mm}")));
+        }
 
         var sessionLabel = sessionRunning ? L.T("Session", "Session", "Sesión") : L.T("Dernière session", "Last session", "Última sesión");
         if (sessionStartUtc is { } start)

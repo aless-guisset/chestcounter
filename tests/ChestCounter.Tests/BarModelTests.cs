@@ -48,7 +48,27 @@ public class BarModelTests : IDisposable
         Assert.Equal(BarState.Confirmed, v.State);
         Assert.Equal("✓ CONFIRMÉ (replay)", v.Badge);
         Assert.DoesNotContain(v.Summary, l => l.Label == "Partie en cours");
-        Assert.Equal("Dernière session", v.Summary[0].Label);
+        Assert.Equal("Dernière partie", v.Summary[0].Label);
+        Assert.Equal("8", v.Summary[0].Value);
+        Assert.Equal("Dernière session", v.Summary[1].Label);
+    }
+
+    [Fact]
+    public void Build_PcLastMatch_IsTheMostRecent()
+    {
+        var d = new TrackerData();
+        d.Matches.Add(M(Week2.AddHours(-3), 4));
+        d.Matches.Add(M(Week2.AddHours(-1), 9));
+        d.Matches.Add(M(Week2.AddHours(-2), 6));
+        var v = BarModel.ForPc(d, null, false, null, false, new ObtainedStore(_dir), Week2);
+        Assert.Equal("9", v.Summary.Single(l => l.Label == "Dernière partie").Value);
+    }
+
+    [Fact]
+    public void Build_PcNoMatch_NoLastMatchLine()
+    {
+        var v = BarModel.ForPc(new TrackerData(), null, false, null, false, new ObtainedStore(_dir), Week2);
+        Assert.DoesNotContain(v.Summary, l => l.Label == "Dernière partie");
     }
 
     [Fact]
