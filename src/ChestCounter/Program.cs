@@ -374,9 +374,9 @@ if (firstRun && interactive)
         ConsoleUi.Text(L.T("Un tout petit processus invisible attend le lancement de Fortnite, puis ouvre le compteur.\nLe compteur se ferme tout seul après Fortnite.",
             "A tiny invisible process waits for Fortnite to start, then opens the counter.\nThe counter closes by itself after Fortnite.",
             "Un pequeño proceso invisible espera a que se inicie Fortnite y luego abre el contador.\nEl contador se cierra solo después de Fortnite."));
-        ConsoleUi.Hint(L.T("Modifiable à tout moment dans les réglages. Désactive-le avant de supprimer ChestCounter.exe.",
-            "Can be changed at any time in the settings. Turn it off before deleting ChestCounter.exe.",
-            "Se puede cambiar en cualquier momento en los ajustes. Desactívalo antes de borrar ChestCounter.exe."));
+        ConsoleUi.Hint(L.T("Modifiable à tout moment dans les réglages. Désactive-le avant de supprimer ChestCounterPlus.exe.",
+            "Can be changed at any time in the settings. Turn it off before deleting ChestCounterPlus.exe.",
+            "Se puede cambiar en cualquier momento en los ajustes. Desactívalo antes de borrar ChestCounterPlus.exe."));
         var withFortnite = ConsoleUi.Menu(new[]
         {
             L.T("Non, je le lancerai moi-même", "No, I will start it myself", "No, lo abriré yo mismo"),
@@ -886,9 +886,9 @@ List<(string Label, Action Run, string? About)> Items()
             if (OperatingSystem.IsWindows() && !config.IsConsole)
             {
                 list.Add(Item($"{L.T("Ouvrir avec Fortnite", "Open with Fortnite", "Abrir con Fortnite")} : {YesNo(config.StartWithFortnite)}", ToggleStartWithFortnite,
-                    L.T("Un petit processus invisible attend Fortnite et ouvre le compteur, qui se ferme après. Il reste actif quand tu quittes le compteur : mets « non » avant de supprimer ou déplacer ChestCounter.exe.",
-                        "A tiny invisible process waits for Fortnite and opens the counter, which closes afterwards. It keeps running when you quit the counter: set this to \"no\" before deleting or moving ChestCounter.exe.",
-                        "Un pequeño proceso invisible espera a Fortnite y abre el contador, que se cierra después. Sigue activo cuando sales del contador: pon «no» antes de borrar o mover ChestCounter.exe.")));
+                    L.T("Un petit processus invisible attend Fortnite et ouvre le compteur, qui se ferme après. Il reste actif quand tu quittes le compteur : mets « non » avant de supprimer ou déplacer ChestCounterPlus.exe.",
+                        "A tiny invisible process waits for Fortnite and opens the counter, which closes afterwards. It keeps running when you quit the counter: set this to \"no\" before deleting or moving ChestCounterPlus.exe.",
+                        "Un pequeño proceso invisible espera a Fortnite y abre el contador, que se cierra después. Sigue activo cuando sales del contador: pon «no» antes de borrar o mover ChestCounterPlus.exe.")));
             }
             var updates = config.UpdateMode switch
             {
@@ -1271,9 +1271,9 @@ void ToggleStartWithFortnite()
         return;
     }
     Console.ForegroundColor = ConsoleColor.Red;
-    Console.WriteLine(L.T("Ouvrir avec Fortnite : impossible ici, lance le compteur depuis ChestCounter.exe.",
-        "Open with Fortnite: not possible here, run the counter from ChestCounter.exe.",
-        "Abrir con Fortnite: no es posible aquí, abre el contador desde ChestCounter.exe."));
+    Console.WriteLine(L.T("Ouvrir avec Fortnite : impossible ici, lance le compteur depuis ChestCounterPlus.exe.",
+        "Open with Fortnite: not possible here, run the counter from ChestCounterPlus.exe.",
+        "Abrir con Fortnite: no es posible aquí, abre el contador desde ChestCounterPlus.exe."));
     Console.ResetColor();
 }
 

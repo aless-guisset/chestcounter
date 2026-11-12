@@ -9,6 +9,11 @@ public static class AppInfo
 
     public const string Repo = "LED-N/Fortnite-ChestCounter";
 
+    /// <summary>Notre version (PC + console), installable à côté de celle de LED-N : autre nom, autre dossier, autres verrous.</summary>
+    public const string DisplayName = "ChestCounter+";
+    public const string DataFolderName = "ChestCounterPlus";
+    public const string ExeName = "ChestCounterPlus.exe";
+
     /// <summary>
     /// Copie modifiée (PC + console) : les mises à jour de LED-N remplaceraient l'exe et effaceraient le mode console,
     /// donc elles sont coupées tant qu'on n'a pas notre propre dépôt de versions.
@@ -23,7 +28,7 @@ public static class AppInfo
         get
         {
             var p = Environment.ProcessPath;
-            return p != null && Path.GetFileName(p).Equals("ChestCounter.exe", StringComparison.OrdinalIgnoreCase) ? p : null;
+            return p != null && Path.GetFileName(p).Equals(ExeName, StringComparison.OrdinalIgnoreCase) ? p : null;
         }
     }
 
@@ -32,8 +37,8 @@ public static class AppInfo
     public static string InstanceMutexFor(string dataDir)
     {
         var hash = System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(Path.GetFullPath(dataDir).TrimEnd('\\', '/').ToLowerInvariant()));
-        return @"Local\ChestCounter.Instance." + Convert.ToHexString(hash, 0, 8);
+        return @"Local\ChestCounterPlus.Instance." + Convert.ToHexString(hash, 0, 8);
     }
-    public const string StandbyMutex = @"Local\ChestCounter.Standby";
-    public const string StandbyStopEvent = @"Local\ChestCounter.StandbyStop";
+    public const string StandbyMutex = @"Local\ChestCounterPlus.Standby";
+    public const string StandbyStopEvent = @"Local\ChestCounterPlus.StandbyStop";
 }

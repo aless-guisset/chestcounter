@@ -6,6 +6,6 @@ cd "$(dirname "$0")"
   -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true \
   -p:DebugType=none -o dist
 /mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe -NoProfile -Command \
-  "Get-Process ChestCounter -ErrorAction SilentlyContinue | Stop-Process -Force; Start-Sleep 1" || true
-cp dist/ChestCounter.exe /mnt/c/Users/adm_loc/ChestCounterPC/
+  "Get-Process ChestCounter,ChestCounterPlus -ErrorAction SilentlyContinue | Stop-Process -Force; Start-Sleep 1" || true
+cp dist/ChestCounterPlus.exe /mnt/c/Users/adm_loc/ChestCounterPC/
 echo "Installé dans C:\\Users\\adm_loc\\ChestCounterPC"

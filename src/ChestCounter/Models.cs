@@ -148,26 +148,68 @@ public sealed class Store
     public string Folder { get; }
 
     /// <summary>
-    /// %APPDATA%\ChestCounter. The tool was called ChestTracker before version 1.1: its folder is moved
-    /// (history, settings and treasure names are kept).
+    /// %APPDATA%\ChestCounterPlus : dossier à part, pour ne jamais se mélanger avec le ChestCounter de LED-N
+    /// (%APPDATA%\ChestCounter). Au premier lancement, l'historique de ce dossier-là est copié (jamais modifié).
     /// </summary>
     public static string DefaultFolder()
     {
         var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-        var folder = Path.Combine(appData, "ChestCounter");
-        var old = Path.Combine(appData, "ChestTracker");
+        var folder = Path.Combine(appData, AppInfo.DataFolderName);
         try
         {
-            if (!Directory.Exists(folder) && File.Exists(Path.Combine(old, "data.json")))
-            {
-                Directory.Move(old, folder);
-            }
+            ImportFromLedN(Path.Combine(appData, "ChestCounter"), folder);
         }
-        catch
+        catch (Exception e)
         {
-            // the old folder is in use (old version still running): start fresh, nothing is lost
+            ErrorLog.Write("Import LED-N", e); // on repart à zéro, l'original n'est pas touché
         }
         return folder;
+    }
+
+    /// <summary>
+    /// Copie le dossier de données de LED-N (historique, réglages, connexion Epic du mode console) vers notre dossier,
+    /// seulement si le nôtre n'existe pas encore. Les dossiers de la fenêtre de LED-N 1.5 (webview, images) sont ignorés.
+    /// Les parties analysées par une version plus récente que la nôtre (LED-N 1.5 = 16) repassent à 0 : les replays
+    /// encore présents sont réanalysés par notre analyseur. Retourne vrai si quelque chose a été copié.
+    /// </summary>
+    public static bool ImportFromLedN(string fromFolder, string toFolder)
+    {
+        if (Directory.Exists(toFolder) || !Directory.Exists(fromFolder))
+        {
+            return false;
+        }
+        var skip = new[] { "webview", "images" };
+        var temp = toFolder + ".import";
+        if (Directory.Exists(temp)) Directory.Delete(temp, true);
+        foreach (var file in Directory.EnumerateFiles(fromFolder, "*", SearchOption.AllDirectories))
+        {
+            var rel = Path.GetRelativePath(fromFolder, file);
+            var top = rel.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)[0];
+            if (skip.Contains(top, StringComparer.OrdinalIgnoreCase)) continue;
+            var dest = Path.Combine(temp, rel);
+            Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
+            File.Copy(file, dest);
+        }
+        var dataPath = Path.Combine(temp, "data.json");
+        if (File.Exists(dataPath) && System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(dataPath)) is System.Text.Json.Nodes.JsonObject root)
+        {
+            static void Lower(System.Text.Json.Nodes.JsonNode? n)
+            {
+                if (n is System.Text.Json.Nodes.JsonObject o && o["AnalyzerVersion"] is { } v && (int)v > ReplayAnalyzer.CurrentVersion)
+                {
+                    o["AnalyzerVersion"] = 0;
+                }
+            }
+            Lower(root);
+            if (root["Matches"] is System.Text.Json.Nodes.JsonArray matches)
+            {
+                foreach (var m in matches) Lower(m);
+            }
+            File.WriteAllText(dataPath, root.ToJsonString(Json));
+        }
+        Directory.CreateDirectory(temp);
+        Directory.Move(temp, toFolder);
+        return true;
     }
 
     public string ConfigPath => Path.Combine(Folder, "config.json");

@@ -14,7 +14,7 @@ namespace ChestCounter;
 public static class FortniteWatch
 {
     private const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
-    private const string RunValue = "ChestCounter";
+    private const string RunValue = "ChestCounterPlus"; // pas « ChestCounter » : c'est celui de LED-N
     // CHESTCOUNTER_GAME_PROCESS: another process name, to test the standby without Fortnite.
     private static readonly string[] GameProcesses =
         { Environment.GetEnvironmentVariable("CHESTCOUNTER_GAME_PROCESS") is { Length: > 0 } test ? test : "FortniteClient-Win64-Shipping" };

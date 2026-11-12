@@ -1,7 +1,9 @@
 # ChestCounter — PC + console
 
 Copie de [LED-N/Fortnite-ChestCounter](https://github.com/LED-N/Fortnite-ChestCounter) (MIT, v1.4.0) avec un mode
-console. Utilisateur francophone : UI, messages et commentaires du code ajouté en français.
+console, appelée **ChestCounter+** (`ChestCounterPlus.exe`, données `%APPDATA%\ChestCounterPlus`, verrous et
+lancement auto préfixés `ChestCounterPlus` : cohabite avec LED-N ; au 1er lancement copie `%APPDATA%\ChestCounter`).
+Utilisateur francophone : UI, messages et commentaires du code ajouté en français.
 
 - Notre dépôt : `origin` = `aless-guisset/chestcounter` (privé). Remote `upstream` = LED-N : **ne jamais pousser
   dessus**. Branche de travail : `ps5`. LED-N a sorti une 1.5.0 (fenêtre WebView2, console supprimée) : pas fusionnée.
@@ -17,15 +19,16 @@ console. Utilisateur francophone : UI, messages et commentaires du code ajouté 
 ~/.dotnet/dotnet publish src/ChestCounter/ChestCounter.csproj -c Release -r win-x64 --self-contained true \
   -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true \
   -p:DebugType=none -o dist
-cp dist/ChestCounter.exe /mnt/c/Users/adm_loc/ChestCounterPC/
+cp dist/ChestCounterPlus.exe /mnt/c/Users/adm_loc/ChestCounterPC/
 ```
 
 SDK .NET 10 dans `~/.dotnet` (Windows n'a que le SDK 8). Raccourci unique : `Bureau\ChestCounter.bat`.
 Dossier Windows `C:\Users\adm_loc\ChestCounterPC` : exe, `Lancer ChestCounter.bat`, `Test XP (40 min).bat`
 (résultat copié dans `Tests\`), `Mes donnees.bat`, `LISEZMOI.txt`.
-Données réelles : `%APPDATA%\ChestCounter` (mode console dans `ps5\` : auth.json, data.json, report.html, overlay).
+Données réelles : `%APPDATA%\ChestCounterPlus` (mode console dans `ps5\` : auth.json, data.json, report.html, overlay).
 
-**Tests** : toujours avec `--data <dossier de test>` et un `config.json` qui contient `"OpenReportOnStart": false`
+**Tests unitaires** : `~/.dotnet/dotnet test tests/ChestCounter.Tests`.
+**Tests de l'app** : toujours avec `--data <dossier de test>` et un `config.json` qui contient `"OpenReportOnStart": false`
 (sinon chaque test ouvre un onglet chez l'utilisateur). Supprimer le dossier de test ensuite (il contient une copie
 de la connexion Epic). Ne jamais laisser de faux chiffres (étalonnage bidon) visibles.
 
