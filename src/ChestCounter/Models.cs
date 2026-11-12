@@ -79,6 +79,9 @@ public sealed class MatchRecord
 
 public sealed class Config
 {
+    /// <summary>Dernier lancement de Fortnite vu (UTC) : début de la « dernière session » quand le jeu est fermé.</summary>
+    public DateTime? LastGameStartUtc { get; set; }
+
     /// <summary>"fr", "en" or "es" (asked on first launch).</summary>
     public string? Language { get; set; }
 
