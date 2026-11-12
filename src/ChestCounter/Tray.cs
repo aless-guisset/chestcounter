@@ -65,6 +65,15 @@ public static class Tray
         }
     }
 
+    /// <summary>Ressort la fenêtre du compteur (cachée à côté de l'horloge ou réduite) et la met au premier plan.</summary>
+    public static void Show()
+    {
+        if (_hwnd != IntPtr.Zero)
+        {
+            PostMessageW(_hwnd, WM_APP_SHOW, IntPtr.Zero, IntPtr.Zero);
+        }
+    }
+
     public static void Stop()
     {
         if (_hwnd != IntPtr.Zero)
@@ -163,6 +172,19 @@ public static class Tray
 
     private static IntPtr WndProc(IntPtr hwnd, uint msg, IntPtr wParam, IntPtr lParam)
     {
+        if (msg == WM_APP_SHOW)
+        {
+            if (_hidden)
+            {
+                Restore();
+            }
+            else
+            {
+                ShowWindow(_console, SW_RESTORE);
+                SetForegroundWindow(_console);
+            }
+            return IntPtr.Zero;
+        }
         if (msg == WM_APP_HIDE)
         {
             if (!_hidden) HideNow(wParam != IntPtr.Zero);
@@ -228,7 +250,7 @@ public static class Tray
 
     private const uint WS_POPUP = 0x80000000;
     private const uint WM_CLOSE = 0x0010, WM_DESTROY = 0x0002, WM_SETICON = 0x0080, WM_LBUTTONUP = 0x0202, WM_RBUTTONUP = 0x0205;
-    private const uint WM_APP_TRAY = 0x8101, WM_APP_HIDE = 0x8102;
+    private const uint WM_APP_TRAY = 0x8101, WM_APP_HIDE = 0x8102, WM_APP_SHOW = 0x8103;
     private const uint EVENT_SYSTEM_MINIMIZESTART = 0x0016, WINEVENT_OUTOFCONTEXT = 0;
     private const int SW_HIDE = 0, SW_RESTORE = 9;
     private const uint NIM_ADD = 0, NIM_DELETE = 2;

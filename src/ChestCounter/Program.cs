@@ -843,6 +843,18 @@ List<(string Label, Action Run, string? About)> Items()
                 L.T("Langue du compteur, du rapport et de l'overlay. Entrée pour passer à la suivante.",
                     "Language of the counter, the report and the overlay. Enter for the next one.",
                     "Idioma del contador, del informe y del overlay. Intro para pasar al siguiente.")));
+            if (!config.IsConsole)
+            {
+                // Mode PC : la connexion Epic sert au « Test XP » (la console la propose dans l'accueil).
+                Ps5Mode.Init(dataDir);
+                list.Add(Ps5Mode.HasAuth
+                    ? Item($"{L.T("Compte Epic", "Epic account", "Cuenta de Epic")} : {Ps5Mode.Player ?? L.T("connecté", "signed in", "conectado")} ({L.T("Entrée pour se déconnecter", "Enter to sign out", "Intro para cerrar sesión")})", Ps5Mode.SignOut,
+                        L.T("Connexion en lecture seule, utilisée par le Test XP. Entrée la révoque.", "Read-only sign-in, used by the XP test. Enter revokes it.", "Conexión de solo lectura, usada por la prueba de XP. Intro la revoca."))
+                    : Item(L.T("Se connecter à Epic (pour le Test XP)", "Sign in to Epic (for the XP test)", "Conectarse a Epic (para la prueba de XP)"), () => SubScreen(() => Ps5Mode.Login()),
+                        L.T("Une seule fois, lecture seule. Sert au « Test XP (40 min).bat » ; le comptage PC continue de lire les replays.",
+                            "Only once, read only. Used by \"Test XP (40 min).bat\"; PC counting still reads the replays.",
+                            "Una sola vez, solo lectura. La usa «Test XP (40 min).bat»; el recuento en PC sigue leyendo las repeticiones.")));
+            }
             list.Add(Item($"{L.T("Plateforme", "Platform", "Plataforma")} : {(config.IsConsole ? L.T("console (PS5, Xbox, Switch)", "console (PS5, Xbox, Switch)", "consola (PS5, Xbox, Switch)") : "PC")}", () =>
                 {
                     config.Platform = config.IsConsole ? "pc" : "console";
@@ -1180,9 +1192,9 @@ void DrawHelp(Frame f)
     {
         f.Blank();
         f.Add("  " + L.T("Overlay", "Overlay", "Overlay"), ConsoleColor.White);
-        Para(L.T("Ctrl+Maj+O : afficher / masquer.  Ctrl+Maj+L : verrouiller / déverrouiller.  Ctrl+Maj+E : ouvrir la barre / onglet suivant. Ces raccourcis marchent partout, même en jeu.",
-            "Ctrl+Shift+O: show / hide.  Ctrl+Shift+L: lock / unlock.  Ctrl+Shift+E: open the bar / next tab. These shortcuts work anywhere, even in game.",
-            "Ctrl+Mayús+O: mostrar / ocultar.  Ctrl+Mayús+L: bloquear / desbloquear.  Ctrl+Mayús+E: abrir la barra / pestaña siguiente. Estos atajos funcionan en cualquier sitio, incluso en el juego."));
+        Para(L.T("Ctrl+Maj+O : afficher / masquer.  Ctrl+Maj+L : verrouiller / déverrouiller.  Ctrl+Maj+E : ouvrir la barre / onglet suivant.  Ctrl+Maj+C : ouvrir le compteur. Ces raccourcis marchent partout, même en jeu.",
+            "Ctrl+Shift+O: show / hide.  Ctrl+Shift+L: lock / unlock.  Ctrl+Shift+E: open the bar / next tab.  Ctrl+Shift+C: open the counter. These shortcuts work anywhere, even in game.",
+            "Ctrl+Mayús+O: mostrar / ocultar.  Ctrl+Mayús+L: bloquear / desbloquear.  Ctrl+Mayús+E: abrir la barra / pestaña siguiente.  Ctrl+Mayús+C: abrir el contador. Estos atajos funcionan en cualquier sitio, incluso en el juego."));
         Para(L.T("Verrouillé, la souris passe au travers. Déverrouillé, clic gauche maintenu pour le déplacer, clic droit pour le masquer.",
             "Locked, the mouse goes through it. Unlocked, hold the left button to move it, right-click to hide it.",
             "Bloqueado, el ratón lo atraviesa. Desbloqueado, arrástralo con el clic izquierdo; clic derecho para ocultarlo."));
@@ -1251,6 +1263,12 @@ void StartOverlay()
         try { store.SaveConfig(config); } catch { /* ignore */ }
     }
     NativeOverlay.SetStyle(config.OverlayStyle);
+    // « Ouvrir le compteur » : sort la fenêtre de la zone de notification si elle y est, sinon la remet devant.
+    NativeOverlay.OpenCounter = () =>
+    {
+        if (Tray.Available) Tray.Show();
+        else NativeConsole.BringToFront();
+    };
     NativeOverlay.Start(config.OverlayX, config.OverlayY, config.OverlayLocked,
         (x, y) =>
         {

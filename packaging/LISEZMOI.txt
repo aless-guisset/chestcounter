@@ -93,7 +93,9 @@ Raccourcis (marchent partout, même en jeu) :
   Ctrl+Maj+E   ouvre la barre, puis onglet suivant (Résumé -> Coffres -> fermée)
   Ctrl+Maj+O   afficher / masquer la barre
   Ctrl+Maj+L   verrouiller / déverrouiller. Déverrouillée, on peut la déplacer
-               à la souris et cliquer sur ses onglets.
+               à la souris et cliquer sur ses onglets et ses boutons.
+  Ctrl+Maj+C   ouvrir le compteur (sa fenêtre revient devant, même si elle
+               était réduite ou cachée à côté de l'horloge)
 
 Ce qu'elle affiche :
   - Fermée : ton total de coffres et un badge :
@@ -104,6 +106,7 @@ Ce qu'elle affiche :
   - Résumé : partie en cours, session, aujourd'hui.
       Session = depuis le lancement de Fortnite (PC)
                 ou depuis le lancement du compteur (PS5).
+  - En bas de la barre ouverte : bouton "Ouvrir le compteur" (comme Ctrl+Maj+C).
   - Coffres · chances : pour chaque trésor de la semaine, ta chance de l'avoir eu
     avec les coffres que tu as ouverts (cotes publiées par Epic). Les trésors de la
     semaine repartent de zéro le dimanche à 15 h (heure belge) ; l'accès à la
@@ -146,7 +149,10 @@ Test XP (optionnel)
 -------------------
 "Test XP (40 min).bat" relève l'XP et les quêtes de ton compte Epic toutes les
 30 secondes pendant une partie, pour voir si Epic donne des infos en direct.
-Il faut s'être connecté à Epic dans ChestCounter+ avant (mode Console). Le résultat
+Il faut s'être connecté à Epic dans ChestCounter+ avant :
+  - PC : Réglages -> "Se connecter à Epic (pour le Test XP)" ;
+  - Console : "Se connecter à Epic" dans l'accueil.
+Le résultat
 s'ouvre à la fin et est copié dans le dossier Tests.
 
 Tes données : %APPDATA%\ChestCounterPlus — ne partage pas ce dossier,

@@ -38,6 +38,17 @@ public static class NativeConsole
         }
     }
 
+    /// <summary>Remet la fenêtre du compteur au premier plan (bouton / Ctrl+Maj+C de la barre).</summary>
+    public static void BringToFront()
+    {
+        var hwnd = GetConsoleWindow();
+        if (hwnd != IntPtr.Zero)
+        {
+            ShowWindow(hwnd, SW_RESTORE);
+            SetForegroundWindow(hwnd);
+        }
+    }
+
     private static bool IsRedirected(int std)
     {
         var h = GetStdHandle(std);
@@ -52,7 +63,7 @@ public static class NativeConsole
     private const int STD_OUTPUT_HANDLE = -11;
     private const int ATTACH_PARENT_PROCESS = -1;
     private const uint FILE_TYPE_DISK = 1, FILE_TYPE_PIPE = 3;
-    private const int SW_SHOWMINNOACTIVE = 7;
+    private const int SW_SHOWMINNOACTIVE = 7, SW_RESTORE = 9;
 
     [DllImport("kernel32.dll")] private static extern IntPtr GetConsoleWindow();
     [DllImport("kernel32.dll")] private static extern bool AllocConsole();
@@ -60,4 +71,5 @@ public static class NativeConsole
     [DllImport("kernel32.dll")] private static extern IntPtr GetStdHandle(int std);
     [DllImport("kernel32.dll")] private static extern uint GetFileType(IntPtr handle);
     [DllImport("user32.dll")] private static extern bool ShowWindow(IntPtr hwnd, int cmd);
+    [DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr hwnd);
 }

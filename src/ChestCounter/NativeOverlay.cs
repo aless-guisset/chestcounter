@@ -31,7 +31,13 @@ public static class NativeOverlay
     private static volatile BarView? _bar;
     /// <summary>0 = fermée (juste le total), 1 = onglet Résumé, 2 = onglet Coffres · chances.</summary>
     private static volatile int _panel;
-    private static RECT _chevRect, _tab1Rect, _tab2Rect;
+    private static RECT _chevRect, _tab1Rect, _tab2Rect, _openRect;
+
+    /// <summary>Ce que fait « Ouvrir le compteur » (bouton de la barre, Ctrl+Maj+C) : fourni par Program.</summary>
+    public static Action? OpenCounter { get; set; }
+
+    /// <summary>True when the global Ctrl+Shift+C shortcut (open the counter) could be registered.</summary>
+    public static bool OpenHotkeyRegistered { get; private set; }
     private static IntPtr _fontBarTotal, _fontBarText, _fontBarBold, _fontBarSmall, _fontBarBadge;
     private static int _barH, _barTextH, _barSmallH, _barTotalH;
 
@@ -153,7 +159,7 @@ public static class NativeOverlay
             finally
             {
                 _hwnd = IntPtr.Zero;
-                HotkeyRegistered = LockHotkeyRegistered = PanelHotkeyRegistered = false;
+                HotkeyRegistered = LockHotkeyRegistered = PanelHotkeyRegistered = OpenHotkeyRegistered = false;
                 _thread = null;
             }
         })
@@ -300,6 +306,7 @@ public static class NativeOverlay
         HotkeyRegistered = RegisterHotKey(_hwnd, 1, MOD_CONTROL | MOD_SHIFT | MOD_NOREPEAT, VK_O);
         LockHotkeyRegistered = RegisterHotKey(_hwnd, 2, MOD_CONTROL | MOD_SHIFT | MOD_NOREPEAT, VK_L);
         PanelHotkeyRegistered = RegisterHotKey(_hwnd, 3, MOD_CONTROL | MOD_SHIFT | MOD_NOREPEAT, VK_E);
+        OpenHotkeyRegistered = RegisterHotKey(_hwnd, 4, MOD_CONTROL | MOD_SHIFT | MOD_NOREPEAT, VK_C);
         ready.Set();
 
         while (GetMessageW(out var msg, IntPtr.Zero, 0, 0) > 0)
@@ -346,7 +353,7 @@ public static class NativeOverlay
                 GetWindowRect(hwnd, out var wr);
                 var px = (short)((long)lParam & 0xFFFF) - wr.Left;
                 var py = (short)(((long)lParam >> 16) & 0xFFFF) - wr.Top;
-                var onButton = In(_lockRect, px, py) || (IsBar && (In(_chevRect, px, py) || (_panel > 0 && (In(_tab1Rect, px, py) || In(_tab2Rect, px, py)))));
+                var onButton = In(_lockRect, px, py) || (IsBar && (In(_chevRect, px, py) || (_panel > 0 && (In(_tab1Rect, px, py) || In(_tab2Rect, px, py) || In(_openRect, px, py)))));
                 return (IntPtr)(onButton ? HTCLIENT : HTCAPTION);
             }
 
@@ -362,7 +369,8 @@ public static class NativeOverlay
             {
                 var cx = (short)((long)lParam & 0xFFFF);
                 var cy = (short)(((long)lParam >> 16) & 0xFFFF);
-                if (IsBar && In(_chevRect, cx, cy)) SetPanel(hwnd, -1);
+                if (IsBar && _panel > 0 && In(_openRect, cx, cy)) OpenCounter?.Invoke();
+                else if (IsBar && In(_chevRect, cx, cy)) SetPanel(hwnd, -1);
                 else if (IsBar && _panel > 0 && In(_tab1Rect, cx, cy)) SetPanel(hwnd, 1);
                 else if (IsBar && _panel > 0 && In(_tab2Rect, cx, cy)) SetPanel(hwnd, 2);
                 else ApplyLock(hwnd, true, notify: true);
@@ -385,6 +393,10 @@ public static class NativeOverlay
                 if ((long)wParam == 2)
                 {
                     ApplyLock(hwnd, !_locked, notify: true);
+                }
+                else if ((long)wParam == 4)
+                {
+                    OpenCounter?.Invoke();
                 }
                 else if ((long)wParam == 3)
                 {
@@ -435,6 +447,7 @@ public static class NativeOverlay
                 UnregisterHotKey(hwnd, 1);
                 UnregisterHotKey(hwnd, 2);
                 UnregisterHotKey(hwnd, 3);
+                UnregisterHotKey(hwnd, 4);
                 PostQuitMessage(0);
                 return IntPtr.Zero;
         }
@@ -724,7 +737,7 @@ public static class NativeOverlay
             var h = _barH;
             if (_panel > 0)
             {
-                h += 1 + Sc(8) + Sc(24) + Sc(8) + BarContentHeight(b) + Sc(6);
+                h += 1 + Sc(8) + Sc(24) + Sc(8) + BarContentHeight(b) + Sc(4) + Sc(26) + Sc(10);
             }
             _lockRect = _locked ? new RECT() : new RECT { Left = w - Sc(28), Top = 0, Right = w - Sc(6), Bottom = _barH };
             var chevRight = _locked ? w - Sc(6) : _lockRect.Left;
@@ -733,6 +746,7 @@ public static class NativeOverlay
             var mid = w / 2;
             _tab1Rect = new RECT { Left = Sc(11), Top = tabTop, Right = mid - Sc(2), Bottom = tabTop + Sc(24) };
             _tab2Rect = new RECT { Left = mid + Sc(2), Top = tabTop, Right = w - Sc(11), Bottom = tabTop + Sc(24) };
+            _openRect = _panel > 0 ? new RECT { Left = Sc(11), Top = h - Sc(10) - Sc(26), Right = w - Sc(11), Bottom = h - Sc(10) } : new RECT();
 
             GetWindowRect(hwnd, out var cur);
             int nx = cur.Left, ny = cur.Top;
@@ -860,6 +874,7 @@ public static class NativeOverlay
                 }
                 y += Sc(7);
             }
+            PaintOpenButton(hdc);
             return;
         }
 
@@ -883,6 +898,17 @@ public static class NativeOverlay
         }
         Text(hdc, _fontBarSmall, dim, L.T("Ce que tu as eu : « Trésors obtenus » dans le compteur.", "Got one? \"Treasures obtained\" in the counter.", "¿Ya lo tienes? «Tesoros conseguidos» en el contador."),
             left, y, right, y + _barSmallH, DT_END_ELLIPSIS);
+        PaintOpenButton(hdc);
+    }
+
+    /// <summary>Bouton « Ouvrir le compteur » en bas de la barre déroulée (cliquable quand elle est déverrouillée).</summary>
+    private static void PaintOpenButton(IntPtr hdc)
+    {
+        var r = _openRect;
+        Fill(hdc, r.Left, r.Top, r.Right, r.Bottom, Rgb(20, 24, 33), Sc(8));
+        var keys = L.T("Ctrl+Maj+C", "Ctrl+Shift+C", "Ctrl+Mayús+C");
+        var text = $"{L.T("Ouvrir le compteur", "Open the counter", "Abrir el contador")}  ·  {keys}";
+        Text(hdc, _fontBarText, Rgb(223, 227, 234), text, r.Left, r.Top, r.Right, r.Bottom, DT_CENTER | DT_VCENTER | DT_END_ELLIPSIS);
     }
 
     // ---- "hud" style: figures only, outlined like the game's own HUD, right-aligned under the minimap -------------
@@ -1136,7 +1162,7 @@ public static class NativeOverlay
     private const int SW_HIDE = 0, SW_SHOWNOACTIVATE = 4;
     private const uint WM_DESTROY = 0x0002, WM_PAINT = 0x000F, WM_NCHITTEST = 0x0084, WM_NCRBUTTONUP = 0x00A5,
         WM_TIMER = 0x0113, WM_EXITSIZEMOVE = 0x0232, WM_APP_TOGGLE = 0x8001, WM_PRINTCLIENT = 0x0318, WM_APP_RELAYOUT = 0x8002, WM_HOTKEY = 0x0312, WM_APP_APPEARANCE = 0x8004, WM_APP_STOP = 0x8005, WM_APP_PANEL = 0x8006;
-    private const uint MOD_CONTROL = 0x2, MOD_SHIFT = 0x4, MOD_NOREPEAT = 0x4000, VK_O = 0x4F, VK_E = 0x45;
+    private const uint MOD_CONTROL = 0x2, MOD_SHIFT = 0x4, MOD_NOREPEAT = 0x4000, VK_O = 0x4F, VK_E = 0x45, VK_C = 0x43;
     private const int HTCAPTION = 2;
     private const int TRANSPARENT = 1, LOGPIXELSY = 90;
     private const uint DT_LEFT = 0x0, DT_CENTER = 0x1, DT_RIGHT = 0x2, DT_VCENTER = 0x4, DT_BOTTOM = 0x8, DT_SINGLELINE = 0x20, DT_CALCRECT = 0x400, DT_NOPREFIX = 0x800, DT_NOCLIP = 0x100, DT_END_ELLIPSIS = 0x8000;
