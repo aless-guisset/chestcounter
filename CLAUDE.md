@@ -13,6 +13,7 @@ Utilisateur francophone : UI, messages et commentaires du code ajouté en franç
 
 ## Build et installation (depuis WSL)
 
+`./package.sh` fabrique `Bureau\ChestCounterPlus.zip` à partager (exe + .bat + `packaging/LISEZMOI.txt`).
 `./deploy.sh` fait tout (compile, ferme l'app si elle tourne, copie l'exe). À la main :
 
 ```

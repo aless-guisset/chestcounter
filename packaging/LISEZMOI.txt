@@ -1,0 +1,49 @@
+ChestCounter+  (compteur de coffres Fortnite, PC + PS5)
+=====================================================
+
+Ce qu'il y a dans le dossier
+----------------------------
+ChestCounterPlus.exe      le compteur (rien a installer)
+Lancer ChestCounter+.bat  ouvre le compteur
+Test XP (40 min).bat      releve l'XP du compte Epic pendant une partie (test)
+LISEZMOI.txt              ce fichier
+
+Installation (tu as deja le ChestCounter de LED-N)
+--------------------------------------------------
+1. Ferme le ChestCounter de LED-N (croix de sa fenetre -> Arreter, ou clic droit
+   sur son icone a cote de l'horloge -> Quitter).
+2. Mets ce dossier ou tu veux, par exemple C:\ChestCounterPlus
+   (pas dans Telechargements, il risque d'y etre efface).
+3. Double-clique "Lancer ChestCounter+.bat".
+   Windows peut afficher "Windows a protege votre ordinateur" (exe non signe) :
+   Informations complementaires -> Executer quand meme.
+   Au premier lancement, ton historique de LED-N est COPIE (l'original n'est pas touche).
+4. Ensuite seulement, desinstalle celui de LED-N :
+   dans sa fenetre, onglet Aide -> Desinstaller. Tu peux supprimer son historique,
+   ChestCounter+ en a deja une copie.
+
+Premier lancement
+-----------------
+- Choisis PC ou Console (PS5). Modifiable plus tard dans les Reglages.
+- PC : active les rediffusions dans Fortnite
+  (Parametres -> Jeu -> Rediffusions -> Enregistrer les rediffusions : Active).
+- Console : connecte-toi a Epic quand le compteur le propose (une seule fois).
+
+La barre des coffres (en jeu)
+-----------------------------
+Ctrl+Maj+E   ouvre la barre, puis onglet suivant (Resume -> Coffres -> fermee)
+Ctrl+Maj+O   afficher / masquer
+Ctrl+Maj+L   verrouiller / deverrouiller (deverrouillee : on peut la deplacer)
+Pour la voir en jeu sur PC : Fortnite en "Plein ecran fenetre"
+(Parametres -> Video -> Mode de fenetre).
+
+- Fermee : le total de coffres.
+- Resume : partie en cours, session, aujourd'hui.
+  Session = depuis le lancement de Fortnite (PC) ou du compteur (PS5).
+- Coffres - chances : tes chances d'avoir eu chaque tresor de la semaine.
+  Ce que tu as deja eu : menu "Tresors obtenus (cocher)" dans le compteur.
+- PC : "EN DIRECT" pendant la partie, "CONFIRME (replay)" a la fin.
+- PS5 : chiffres estimes, marques "≈" (Epic ne donne rien pendant la partie).
+
+Tes donnees : %APPDATA%\ChestCounterPlus
+(historique, reglages, connexion Epic : ne partage pas ce dossier).
