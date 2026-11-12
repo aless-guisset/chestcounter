@@ -102,10 +102,6 @@ var store = new Store(dataDir);
 ErrorLog.FilePath = store.ErrorLogPath;
 
 // --ps5 : mode console (PS5, Xbox, Switch). Les replays restent dans la console : on lit le compteur du compte Epic.
-if (OperatingSystem.IsWindows() && Array.IndexOf(args, "--audio-test") is int ai && ai >= 0 && ai + 3 < args.Length)
-{
-    return AudioWatch.Test(args[ai + 1], int.Parse(args[ai + 2]), args[ai + 3]);
-}
 if (args.Contains("--ps5-stats"))
 {
     return Ps5Mode.DumpStats(dataDir);
@@ -645,11 +641,6 @@ while (!quit)
         CheckAutoClose();
     }
 
-    if (OperatingSystem.IsWindows())
-    {
-        AudioWatch.Tick(dataDir, config.IsConsole, config.RecordAudio);
-    }
-
     if (config.IsConsole && Ps5Mode.Initialized)
     {
         Ps5Mode.Tick(config.OpenReportOnStart && !auto);
@@ -725,7 +716,6 @@ dashboard = false;
 watcher?.Dispose();
 if (OperatingSystem.IsWindows())
 {
-    AudioWatch.StopAll();
     NativeOverlay.Stop();
     Tray.Stop();
 }
@@ -888,18 +878,6 @@ List<(string Label, Action Run, string? About)> Items()
             list.Add(Item($"{L.T("Ouvrir le rapport au démarrage", "Open the report at startup", "Abrir el informe al iniciar")} : {YesNo(config.OpenReportOnStart)}",
                 () => config.OpenReportOnStart = !config.OpenReportOnStart,
                 L.T("Ouvre le rapport dans ton navigateur à chaque lancement du compteur.", "Opens the report in your browser each time the counter starts.", "Abre el informe en tu navegador cada vez que se inicia el contador.")));
-            if (OperatingSystem.IsWindows())
-            {
-                list.Add(Item($"{L.T("Enregistrer le son des parties", "Record the sound of matches", "Grabar el sonido de las partidas")} : {YesNo(config.RecordAudio)}",
-                    () => config.RecordAudio = !config.RecordAudio,
-                    config.IsConsole
-                        ? L.T("Capte le son de PS Remote Play (seulement lui) pendant que tu joues, pour la détection des coffres en direct. Gardé dans le dossier audio (6 derniers).",
-                            "Captures the sound of PS Remote Play (only it) while you play, for live chest detection. Kept in the audio folder (last 6).",
-                            "Capta el sonido de PS Remote Play (solo él) mientras juegas, para detectar los cofres en directo. Se guarda en la carpeta audio (6 últimos).")
-                        : L.T("Capte le son de Fortnite (seulement lui) pendant que tu joues, pour la détection des coffres en direct. Gardé dans le dossier audio (6 derniers).",
-                            "Captures Fortnite's sound (only it) while you play, for live chest detection. Kept in the audio folder (last 6).",
-                            "Capta el sonido de Fortnite (solo él) mientras juegas, para detectar los cofres en directo. Se guarda en la carpeta audio (6 últimos).")));
-            }
             if (OperatingSystem.IsWindows() && !config.IsConsole)
             {
                 list.Add(Item($"{L.T("Ouvrir avec Fortnite", "Open with Fortnite", "Abrir con Fortnite")} : {YesNo(config.StartWithFortnite)}", ToggleStartWithFortnite,

@@ -95,9 +95,6 @@ public sealed class Config
     /// <summary>"pc" (replays du PC) ou "console" (PS5, Xbox, Switch : compteur du compte Epic). Vide = pas encore choisi.</summary>
     public string Platform { get; set; } = "";
     public bool IsConsole => Platform == "console";
-
-    /// <summary>Enregistre le son de Fortnite (PC) ou de PS Remote Play (PS5) pour la détection des coffres.</summary>
-    public bool RecordAudio { get; set; } = true;
     public bool OpenReportOnStart { get; set; } = true;
     public bool ShowOverlay { get; set; } = true;
 

@@ -664,13 +664,6 @@ public static class Ps5Mode
         {
             row(L.T("Paliers", "Stages", "Etapas"), new[] { new Seg(string.Join("  ", _season.Count.Skip(1).Select(m => $"{L.N(m.Value)} ({m.At.ToLocalTime():dd'/'MM})")), mut) });
         }
-        if (OperatingSystem.IsWindows())
-        {
-            var rec = AudioWatch.Current;
-            row(L.T("Son", "Sound", "Sonido"), rec != null
-                ? new[] { new Seg("● " + L.T($"enregistrement de {AudioWatch.TargetName}", $"recording {AudioWatch.TargetName}", $"grabando {AudioWatch.TargetName}"), ConsoleColor.Red), new Seg($"  ·  {(int)rec.Duration.TotalMinutes} min", mut) }
-                : new[] { new Seg(L.T("en attente de PS Remote Play (lance-le pour la détection en direct)", "waiting for PS Remote Play (start it for live detection)", "esperando PS Remote Play (ábrelo para la detección en directo)"), ConsoleColor.DarkGray) });
-        }
         if (_data.Calib is { } c)
         {
             row(L.T("Étalonnage", "Calibration", "Calibración"), new[] { new Seg(Describe(c) + $"  ({c.At.ToLocalTime():dd'/'MM})", mut) });
