@@ -1,0 +1,222 @@
+using System.Diagnostics;
+using System.Runtime.InteropServices;
+using System.Runtime.InteropServices.WindowsRuntime;
+using System.Text;
+using System.Text.RegularExpressions;
+using Windows.Graphics.Imaging;
+using Windows.Media.Ocr;
+
+namespace ChestCounter;
+
+/// <summary>
+/// Lecture de l'écran (OCR intégré à Windows) : capture une fenêtre (Fortnite sur PC, ou la fenêtre d'OBS / du
+/// navigateur qui montre la console ou le stream) et lit le texte affiché. Ne touche pas au jeu : c'est une copie
+/// de l'image, comme un logiciel de stream.
+/// Étape 1 (--ocr-test) : relever ce qui s'affiche quand on ouvre un coffre (texte, position) pour régler la détection.
+/// </summary>
+public static class ScreenOcr
+{
+    public sealed record Line(string Text, double X, double Y, double W, double H);
+
+    /// <summary>Lignes qui ressemblent à un gain d'XP ou à un coffre (« +600 XP », « Coffre fouillé »…).</summary>
+    public static readonly Regex Interesting = new(@"\bXP\b|coffre|chest|cofre|fouill|search|registr", RegexOptions.IgnoreCase);
+
+    /// <summary>
+    /// --ocr-test [minutes] [fenêtre] : toutes les secondes, lit la fenêtre (Fortnite par défaut, sinon la première
+    /// fenêtre dont le titre contient le texte donné, ex. « OBS » ou « Twitch ») et note dans ocr\ocr.txt les lignes
+    /// intéressantes avec l'heure et leur position (en % de la fenêtre). Garde une capture PNG des 40 premières.
+    /// </summary>
+    public static int Test(string dataDir, int minutes, string? windowTitle)
+    {
+        if (!OperatingSystem.IsWindowsVersionAtLeast(10, 0, 19041))
+        {
+            Console.WriteLine("Windows 10 (2004) ou plus récent requis.");
+            return 1;
+        }
+        try { SetProcessDpiAwarenessContext(new IntPtr(-4)); } catch { } // vraies coordonnées d'écran
+        var folder = Path.Combine(dataDir, "ocr");
+        Directory.CreateDirectory(folder);
+        var path = Path.Combine(folder, "ocr.txt");
+        var engine = OcrEngine.TryCreateFromUserProfileLanguages();
+        if (engine == null)
+        {
+            Console.WriteLine("OCR Windows indisponible (aucune langue OCR installée).");
+            return 1;
+        }
+        File.WriteAllText(path, $"== lecture d'écran ({engine.RecognizerLanguage.DisplayName}) pendant {minutes} min, fenêtre « {windowTitle ?? "Fortnite"} », début {DateTime.Now:yyyy-MM-dd HH:mm:ss} ==\n");
+        void Log(string line)
+        {
+            var l = $"{DateTime.Now:HH:mm:ss.f}  {line}";
+            File.AppendAllText(path, l + "\n");
+            try { Console.WriteLine(l); } catch { }
+        }
+
+        var end = DateTime.UtcNow.AddMinutes(minutes);
+        var shots = 0;
+        var lastNoWindow = DateTime.MinValue;
+        var recent = new Dictionary<string, DateTime>();
+        while (DateTime.UtcNow < end)
+        {
+            var started = Stopwatch.StartNew();
+            try
+            {
+                var hwnd = FindWindow(windowTitle);
+                if (hwnd == IntPtr.Zero)
+                {
+                    if (DateTime.UtcNow - lastNoWindow > TimeSpan.FromMinutes(1)) Log($"fenêtre « {windowTitle ?? "Fortnite"} » introuvable (en attente)");
+                    lastNoWindow = DateTime.UtcNow;
+                    Thread.Sleep(2000);
+                    continue;
+                }
+                if (Capture(hwnd) is { } frame)
+                {
+                    var lines = Recognize(engine, frame).Where(l => Interesting.IsMatch(l.Text)).ToList();
+                    var fresh = lines.Where(l => !recent.TryGetValue(l.Text, out var seen) || DateTime.UtcNow - seen > TimeSpan.FromSeconds(4)).ToList();
+                    foreach (var l in lines) recent[l.Text] = DateTime.UtcNow;
+                    if (fresh.Count > 0)
+                    {
+                        Log(string.Join("  |  ", fresh.Select(l => $"« {l.Text} » @ {l.X:0}%,{l.Y:0}% ({l.W:0}×{l.H:0}%)")));
+                        if (shots < 40)
+                        {
+                            shots++;
+                            SavePng(frame, Path.Combine(folder, $"ocr-{DateTime.Now:HHmmss}.png"));
+                        }
+                    }
+                }
+            }
+            catch (Exception e)
+            {
+                Log("erreur " + e.Message);
+                Thread.Sleep(2000);
+            }
+            var rest = 1000 - (int)started.ElapsedMilliseconds;
+            if (rest > 0) Thread.Sleep(rest);
+        }
+        Log("fin de la lecture");
+        return 0;
+    }
+
+    public sealed record Frame(byte[] Bgra, int Width, int Height);
+
+    /// <summary>Fenêtre de Fortnite (processus du jeu), ou la première fenêtre visible dont le titre contient le texte.</summary>
+    public static IntPtr FindWindow(string? title)
+    {
+        if (title == null)
+        {
+            foreach (var p in Process.GetProcessesByName("FortniteClient-Win64-Shipping"))
+            {
+                using (p)
+                {
+                    if (p.MainWindowHandle != IntPtr.Zero) return p.MainWindowHandle;
+                }
+            }
+            return IntPtr.Zero;
+        }
+        var found = IntPtr.Zero;
+        EnumWindows((h, _) =>
+        {
+            if (!IsWindowVisible(h)) return true;
+            var sb = new StringBuilder(512);
+            GetWindowText(h, sb, sb.Capacity);
+            if (sb.ToString().Contains(title, StringComparison.OrdinalIgnoreCase))
+            {
+                found = h;
+                return false;
+            }
+            return true;
+        }, IntPtr.Zero);
+        return found;
+    }
+
+    /// <summary>Copie de l'écran à l'endroit de la fenêtre (marche en plein écran fenêtré ; la fenêtre doit être visible).</summary>
+    public static Frame? Capture(IntPtr hwnd)
+    {
+        if (!GetWindowRect(hwnd, out var r) || IsIconic(hwnd)) return null;
+        int w = r.Right - r.Left, h = r.Bottom - r.Top;
+        if (w < 200 || h < 150) return null;
+        var screen = GetDC(IntPtr.Zero);
+        var mem = CreateCompatibleDC(screen);
+        var bmp = CreateCompatibleBitmap(screen, w, h);
+        var old = SelectObject(mem, bmp);
+        try
+        {
+            if (!BitBlt(mem, 0, 0, w, h, screen, r.Left, r.Top, 0x00CC0020 | 0x40000000)) return null;
+            SelectObject(mem, old);
+            var info = new BITMAPINFOHEADER { biSize = 40, biWidth = w, biHeight = -h, biPlanes = 1, biBitCount = 32 };
+            var pixels = new byte[w * h * 4];
+            if (GetDIBits(mem, bmp, 0, (uint)h, pixels, ref info, 0) == 0) return null;
+            for (var i = 3; i < pixels.Length; i += 4) pixels[i] = 255;
+            return new Frame(pixels, w, h);
+        }
+        finally
+        {
+            DeleteObject(bmp);
+            DeleteDC(mem);
+            ReleaseDC(IntPtr.Zero, screen);
+        }
+    }
+
+    public static List<Line> Recognize(OcrEngine engine, Frame f)
+    {
+        using var bitmap = SoftwareBitmap.CreateCopyFromBuffer(f.Bgra.AsBuffer(), BitmapPixelFormat.Bgra8, f.Width, f.Height, BitmapAlphaMode.Premultiplied);
+        var result = engine.RecognizeAsync(bitmap).AsTask().GetAwaiter().GetResult();
+        var list = new List<Line>();
+        foreach (var line in result.Lines)
+        {
+            if (line.Words.Count == 0) continue;
+            double x0 = line.Words.Min(w => w.BoundingRect.X), y0 = line.Words.Min(w => w.BoundingRect.Y);
+            double x1 = line.Words.Max(w => w.BoundingRect.X + w.BoundingRect.Width), y1 = line.Words.Max(w => w.BoundingRect.Y + w.BoundingRect.Height);
+            list.Add(new Line(line.Text, 100 * x0 / f.Width, 100 * y0 / f.Height, 100 * (x1 - x0) / f.Width, 100 * (y1 - y0) / f.Height));
+        }
+        return list;
+    }
+
+    private static void SavePng(Frame f, string path)
+    {
+        try
+        {
+            using var bitmap = SoftwareBitmap.CreateCopyFromBuffer(f.Bgra.AsBuffer(), BitmapPixelFormat.Bgra8, f.Width, f.Height, BitmapAlphaMode.Premultiplied);
+            using var mem = new Windows.Storage.Streams.InMemoryRandomAccessStream();
+            var encoder = BitmapEncoder.CreateAsync(BitmapEncoder.PngEncoderId, mem).AsTask().GetAwaiter().GetResult();
+            encoder.SetSoftwareBitmap(bitmap);
+            encoder.FlushAsync().AsTask().GetAwaiter().GetResult();
+            var bytes = new byte[mem.Size];
+            using var reader = new Windows.Storage.Streams.DataReader(mem.GetInputStreamAt(0));
+            reader.LoadAsync((uint)mem.Size).AsTask().GetAwaiter().GetResult();
+            reader.ReadBytes(bytes);
+            File.WriteAllBytes(path, bytes);
+        }
+        catch (Exception e)
+        {
+            ErrorLog.Write("capture PNG", e);
+        }
+    }
+
+    // ---- Win32 -----------------------------------------------------------------------------------------------------
+
+    [StructLayout(LayoutKind.Sequential)] private struct RECT { public int Left, Top, Right, Bottom; }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct BITMAPINFOHEADER
+    {
+        public uint biSize; public int biWidth, biHeight; public ushort biPlanes, biBitCount;
+        public uint biCompression, biSizeImage; public int biXPelsPerMeter, biYPelsPerMeter; public uint biClrUsed, biClrImportant;
+    }
+
+    private delegate bool EnumWindowsProc(IntPtr hwnd, IntPtr lParam);
+    [DllImport("user32.dll")] private static extern bool EnumWindows(EnumWindowsProc cb, IntPtr lParam);
+    [DllImport("user32.dll")] private static extern bool IsWindowVisible(IntPtr hwnd);
+    [DllImport("user32.dll")] private static extern bool IsIconic(IntPtr hwnd);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetWindowText(IntPtr hwnd, StringBuilder text, int max);
+    [DllImport("user32.dll")] private static extern bool GetWindowRect(IntPtr hwnd, out RECT rect);
+    [DllImport("user32.dll")] private static extern IntPtr GetDC(IntPtr hwnd);
+    [DllImport("user32.dll")] private static extern int ReleaseDC(IntPtr hwnd, IntPtr dc);
+    [DllImport("user32.dll")] private static extern bool SetProcessDpiAwarenessContext(IntPtr value);
+    [DllImport("gdi32.dll")] private static extern IntPtr CreateCompatibleDC(IntPtr dc);
+    [DllImport("gdi32.dll")] private static extern IntPtr CreateCompatibleBitmap(IntPtr dc, int w, int h);
+    [DllImport("gdi32.dll")] private static extern IntPtr SelectObject(IntPtr dc, IntPtr obj);
+    [DllImport("gdi32.dll")] private static extern bool BitBlt(IntPtr dst, int x, int y, int w, int h, IntPtr src, int sx, int sy, uint rop);
+    [DllImport("gdi32.dll")] private static extern int GetDIBits(IntPtr dc, IntPtr bmp, uint start, uint lines, byte[] bits, ref BITMAPINFOHEADER info, uint usage);
+    [DllImport("gdi32.dll")] private static extern bool DeleteObject(IntPtr obj);
+    [DllImport("gdi32.dll")] private static extern bool DeleteDC(IntPtr dc);
+}

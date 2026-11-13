@@ -111,6 +111,13 @@ if (Array.IndexOf(args, "--ps5-xp") is var xpAt and >= 0)
     var minutes = xpAt + 1 < args.Length && int.TryParse(args[xpAt + 1], out var m) && m > 0 ? m : 60;
     return Ps5Mode.DumpXp(dataDir, minutes);
 }
+// --ocr-test [minutes] [titre de fenêtre] : relève le texte lu à l'écran (coffres, XP) pour régler la détection.
+if (Array.IndexOf(args, "--ocr-test") is var ocrAt and >= 0)
+{
+    var minutes = ocrAt + 1 < args.Length && int.TryParse(args[ocrAt + 1], out var m) && m > 0 ? m : 30;
+    var title = ocrAt + 2 < args.Length && !args[ocrAt + 2].StartsWith("--") ? args[ocrAt + 2] : null;
+    return ScreenOcr.Test(dataDir, minutes, title);
+}
 if (args.Contains("--ps5-quests"))
 {
     return Ps5Mode.DumpQuests(dataDir);

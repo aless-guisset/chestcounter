@@ -2,6 +2,8 @@
   <PropertyGroup>
     <!-- Windows app: the standby process has no window; the tool opens its own console (NativeConsole). -->
     <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <AssemblyName>ChestCounterPlus</AssemblyName>
     <RootNamespace>ChestCounter</RootNamespace>
     <Version>1.4.0</Version>
