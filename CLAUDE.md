@@ -47,8 +47,21 @@ de la connexion Epic). Ne jamais laisser de faux chiffres (étalonnage bidon) vi
   via le palier coffres rares), étalonnage optionnel donné par le joueur (parties, coffres). Pas de suivi en direct.
 - Les noms de quêtes changent peut-être à chaque saison : adapter `TierRe` / `ChestRe` si les paliers ne sont plus reconnus.
 
-- **Piste abandonnée** : enregistrement du son (retiré). **Piste en cours** : l'XP affichée à l'ouverture d'un coffre.
-  Profil athena : `stats.xp`, `book_xp`, `level`, `book_level`, `accountLevel`. Reste à savoir si ça bouge pendant la partie.
+- **Piste abandonnée** : enregistrement du son (retiré).
+- **XP (test du 13/11, Recharge)** : le profil athena (`stats.xp`, `level`…) ne bouge **pas pendant la partie**, tout
+  arrive d'un coup à la sortie (+XP, quêtes du jour). Pas de direct par l'API, mais **fin de partie détectable** :
+  `ConsoleMatches` (XP changée entre deux relevés = partie finie), puis le joueur donne ses coffres (téléphone /
+  menu « Dernière partie »), sinon sa moyenne (≈). L'XP d'une partie mélange tout : impossible d'en déduire les coffres.
+- Recharge (`blastberry`/`punchberry`) compte comme le reste (stats Epic, replays PC).
+
+## Téléphone et lecture d'écran
+
+- `PhoneServer` : page servie sur le réseau local (`TcpListener`, port 8723, clé secrète dans l'URL/QR, `config.PhoneToken`),
+  menu « Téléphone (QR code) » → `telephone.html` (QR SVG, QRCoder). Commandes du téléphone mises en file et appliquées
+  par `Ps5Mode.Tick` (jamais pendant un relevé). Page : `Assets/phone.html`.
+- `ScreenOcr` : capture d'une fenêtre (BitBlt écran) + OCR Windows (`Windows.Media.Ocr`, d'où la cible
+  `net10.0-windows10.0.19041.0`). `--ocr-test [min] [titre]` note le texte lu (coffres, XP) dans `ocr\ocr.txt` + PNG.
+  Étape suivante : régler la détection d'après ces relevés (PC : Fortnite ; console : fenêtre OBS / stream).
 
 Outils de diagnostic : `--ps5-quests` (attributs bruts des quêtes), `--ps5-stats` (parties par jour UTC) et
-`--ps5-xp [minutes]` (relève le profil toutes les 30 s et note ce qui change, dans `ps5\xp.txt`).
+`--ps5-xp [minutes]` (relève le profil toutes les 30 s et note ce qui change, dans `ps5\xp.txt`), `--ocr-test`.

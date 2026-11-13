@@ -12,7 +12,7 @@ Contenu du dossier
   ChestCounterPlus.exe                  le compteur (rien à installer)
   Lancer ChestCounter+.bat              ouvre le compteur
   Desinstaller ChestCounter LED-N.bat   retire l'ancien ChestCounter de LED-N
-  Test XP (40 min).bat                  test optionnel (voir plus bas)
+  Test lecture ecran (30 min).bat       test optionnel (voir plus bas)
   LISEZMOI.txt                          ce fichier
 
 
@@ -99,7 +99,8 @@ Raccourcis (marchent partout, même en jeu) :
 
 Ce qu'elle affiche :
   - Fermée : ton total de coffres et un badge :
-      "● EN DIRECT"         pendant une partie (PC)
+      "● PARTIE EN COURS"   pendant une partie (PC), chiffre à la fin
+      "● EN DIRECT"         pendant une partie, avec un chiffre
       "✓ CONFIRMÉ (replay)" chiffres sûrs, fin de partie (PC)
       "≈ ESTIMATION"        chiffres estimés (PS5)
       "✓ CONFIRMÉ (Epic)"   chiffres sûrs donnés par Epic (PS5)
@@ -115,6 +116,30 @@ Ce qu'elle affiche :
 Trésors déjà obtenus : dans le compteur, menu "Trésors obtenus (cocher)",
 Entrée pour cocher ou décocher, Échap pour finir. Ce qui est coché disparaît de la
 page Coffres. Sur PC, un trésor trouvé dans un replay est coché tout seul.
+
+Sur PS5 (au-delà de 1 000 coffres) : le compteur voit la fin de chaque partie
+(ton XP Epic change à la sortie). La barre affiche "Dernière partie" et demande
+"combien de coffres ?" : réponds sur le téléphone ou dans le compteur, menu
+"Dernière partie : combien de coffres ?". Sans réponse, ta moyenne est utilisée (≈).
+
+
+=========================================================
+Le téléphone (PC ou PS5)
+=========================================================
+
+  1. Dans le compteur : menu "Téléphone (QR code)". Une page s'ouvre avec un QR code.
+  2. Si Windows demande l'autorisation réseau : coche "Réseaux privés" -> Autoriser.
+  3. Téléphone sur le même Wi-Fi que le PC : scanne le QR code avec l'appareil photo.
+  4. Pour l'avoir comme une appli : menu du navigateur -> "Ajouter à l'écran d'accueil".
+
+Sur la page : ta barre (total, session, chances), et en mode Console :
+  - "+1 coffre" : appuie à chaque coffre pendant la partie, le chiffre est gardé
+    à la fin de la partie ;
+  - "Combien de coffres ?" à la fin d'une partie ; touche une ancienne partie
+    pour la corriger ("pas une partie" pour la supprimer).
+La page marche tant que ChestCounter+ est ouvert sur le PC. Le lien contient une
+clé secrète : ne le partage pas.
+
 
 Le style de la barre (barre, HUD, classique), sa taille et sa transparence se
 changent dans les Réglages.
@@ -145,15 +170,13 @@ Désinstaller ChestCounter+ (plus tard)
      connexion Epic).
 
 
-Test XP (optionnel)
--------------------
-"Test XP (40 min).bat" relève l'XP et les quêtes de ton compte Epic toutes les
-30 secondes pendant une partie, pour voir si Epic donne des infos en direct.
-Il faut s'être connecté à Epic dans ChestCounter+ avant :
-  - PC : Réglages -> "Se connecter à Epic (pour le Test XP)" ;
-  - Console : "Se connecter à Epic" dans l'accueil.
-Le résultat
-s'ouvre à la fin et est copié dans le dossier Tests.
+Test lecture d'écran (optionnel)
+--------------------------------
+"Test lecture ecran (30 min).bat" lit l'écran toutes les secondes et note le texte
+qui s'affiche quand tu ouvres un coffre (+XP), pour préparer le comptage en direct.
+  - PC : Entrée, puis joue en "Plein écran fenêtré".
+  - Console : tape un mot du titre de la fenêtre qui montre ton jeu (OBS, Twitch…).
+Le résultat (ocr.txt et quelques captures) est dans %APPDATA%\ChestCounterPlus\ocr.
 
 Tes données : %APPDATA%\ChestCounterPlus — ne partage pas ce dossier,
 il contient ta connexion Epic.

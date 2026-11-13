@@ -12,17 +12,17 @@ crlf() { sed 's/\r*$/\r/' ; }
 crlf < packaging/LISEZMOI.txt > "$OUT/LISEZMOI.txt"
 crlf < packaging/Desinstaller-ChestCounter-LED-N.bat > "$OUT/Desinstaller ChestCounter LED-N.bat"
 printf '@echo off\nstart "" "%%~dp0ChestCounterPlus.exe"\n' | crlf > "$OUT/Lancer ChestCounter+.bat"
-crlf > "$OUT/Test XP (40 min).bat" <<'BAT'
+crlf > "$OUT/Test lecture ecran (30 min).bat" <<'BAT'
 @echo off
 cd /d "%~dp0"
-echo Releve XP et quetes du compte Epic toutes les 30 s pendant 40 min.
-echo Il faut s'etre connecte a Epic dans ChestCounter+ (mode Console) avant.
-echo Lance une partie, ouvre des coffres et note l'heure.
+echo Lecture de l'ecran pendant 30 min : note le texte affiche quand tu ouvres un coffre.
+echo PC : laisse vide (fenetre de Fortnite, en "Plein ecran fenetre").
+echo Console : tape un mot du titre de la fenetre qui montre ton jeu (ex. OBS, Twitch, YouTube).
 echo.
-start "" /wait /b ChestCounterPlus.exe --ps5-xp 40
-if not exist "Tests" mkdir "Tests"
-copy /y "%APPDATA%\ChestCounterPlus\ps5\xp.txt" "Tests\xp.txt" >nul && start "" notepad "Tests\xp.txt"
-if errorlevel 1 echo Pas de resultat : connecte-toi a Epic dans ChestCounter+ (mode Console) puis relance.
+set "WIN="
+set /p WIN=Fenetre (Entree = Fortnite) : 
+if "%WIN%"=="" (start "" /wait /b ChestCounterPlus.exe --ocr-test 30) else (start "" /wait /b ChestCounterPlus.exe --ocr-test 30 "%WIN%")
+start "" explorer "%APPDATA%\ChestCounterPlus\ocr"
 pause
 BAT
 WIN_OUT=$(wslpath -w "$OUT")
