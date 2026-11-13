@@ -171,7 +171,13 @@ then *Add to Home screen* to keep it like an app.
 > - The phone must be on the **same Wi-Fi** as the PC (not on 4G/5G, not on a guest Wi-Fi).
 > - The first time, Windows shows a **Windows Firewall** prompt for ChestCounter+: tick **Private networks** and click
 >   **Allow**. Without it, the phone cannot reach the PC.
-> - Still not loading? In Windows, *Settings → Network & internet → Wi-Fi → your network* and set it to **Private network**.
+> - Still not loading? Windows is blocking the phone (Wi-Fi set to *Public*, or permission refused). Open PowerShell
+>   **as administrator** and run once:
+>   ```powershell
+>   Get-NetConnectionProfile | Set-NetConnectionProfile -NetworkCategory Private
+>   New-NetFirewallRule -DisplayName "ChestCounter+ (telephone)" -Direction Inbound -Protocol TCP -LocalPort 8723 -Action Allow -Profile Private
+>   ```
+>   The first line sets your home Wi-Fi to private; the second only opens the phone's port, on private networks only.
 
 <img src="docs/plus/phone.png" alt="Phone page" width="300">
 

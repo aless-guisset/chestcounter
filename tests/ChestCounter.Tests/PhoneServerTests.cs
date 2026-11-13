@@ -104,4 +104,20 @@ public class PhoneServerTests
         }
         finally { PhoneServer.Stop(); }
     }
+
+    [Fact]
+    public void QrPage_HasCodeAndFirewallTip()
+    {
+        var path = Path.Combine(Path.GetTempPath(), "cc-qr-" + Guid.NewGuid().ToString("N") + ".html");
+        try
+        {
+            PhoneServer.WriteQrPage(path, "http://192.168.1.20:8723/?k=abc123");
+            var html = File.ReadAllText(path);
+            Assert.Contains("<svg", html);
+            Assert.Contains("192.168.1.20:8723", html);
+            Assert.Contains("Set-NetConnectionProfile -NetworkCategory Private", html);
+            Assert.Contains("-LocalPort 8723 ", html);
+        }
+        finally { File.Delete(path); }
+    }
 }

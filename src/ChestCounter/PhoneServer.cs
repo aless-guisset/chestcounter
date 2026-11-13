@@ -237,7 +237,9 @@ public static class PhoneServer
             <meta name="viewport" content="width=device-width, initial-scale=1">
             <style>body{margin:0;background:#14110d;color:#f3ead9;font:16px/1.5 system-ui,"Segoe UI",sans-serif;display:grid;place-items:center;min-height:100vh}
             main{max-width:560px;padding:24px;text-align:center}.qr{background:#fff;padding:16px;border-radius:16px;display:inline-block}.qr svg{width:300px;height:300px;display:block}
-            h1{color:#e9b44c;font-size:24px}ol{text-align:left;color:#d8cbb6}code{display:block;margin-top:16px;color:#a8998a;word-break:break-all;font-size:13px}</style></head>
+            h1{color:#e9b44c;font-size:24px}ol{text-align:left;color:#d8cbb6}code{display:block;margin-top:16px;color:#a8998a;word-break:break-all;font-size:13px}
+            .tip{text-align:left;margin-top:20px;background:#201b15;border:1px solid #8a6a2b;border-radius:12px;padding:12px 16px}.tip p{margin:8px 0;color:#d8cbb6;font-size:14px}
+            .tip pre{white-space:pre-wrap;word-break:break-all;background:#0e0c09;color:#e9b44c;padding:10px;border-radius:8px;font-size:12px;user-select:all}.small{font-size:12px!important;color:#a8998a!important}</style></head>
             <body><main><h1>{{L.T("Ouvre le compteur sur ton téléphone", "Open the counter on your phone", "Abre el contador en tu teléfono")}}</h1>
             <div class="qr">{{svg}}</div>
             <ol><li><b>{{L.T("Téléphone sur le même Wi-Fi que ce PC", "Phone on the same Wi-Fi as this PC", "Teléfono en la misma Wi-Fi que este PC")}}</b>{{L.T(" (pas en 4G/5G, pas sur un Wi-Fi invité).", " (not on 4G/5G, not on a guest Wi-Fi).", " (no en 4G/5G, no en una Wi-Fi de invitados).")}}</li>
@@ -246,6 +248,15 @@ public static class PhoneServer
             <li>{{L.T("Scanne le QR code avec l'appareil photo.", "Scan the QR code with the camera.", "Escanea el código QR con la cámara.")}}</li>
             <li>{{L.T("Pour l'avoir comme une appli : menu du navigateur → « Ajouter à l'écran d'accueil ».", "To keep it like an app: browser menu → \"Add to Home screen\".", "Para tenerlo como app: menú del navegador → «Añadir a pantalla de inicio».")}}</li>
             <li>{{L.T("La page marche tant que ChestCounter+ est ouvert sur le PC.", "The page works while ChestCounter+ is open on the PC.", "La página funciona mientras ChestCounter+ esté abierto en el PC.")}}</li></ol>
+            <div class="tip"><b>{{L.T("Conseil : la page tourne dans le vide sur le téléphone ?", "Tip: the page keeps loading on the phone?", "Consejo: ¿la página se queda cargando en el teléfono?")}}</b>
+            <p>{{L.T("Windows bloque le téléphone (Wi-Fi en « Public » ou autorisation refusée). Menu Démarrer → tape PowerShell → clic droit → « Exécuter en tant qu'administrateur », colle ces deux lignes, puis recharge la page sur le téléphone :",
+                "Windows is blocking the phone (Wi-Fi set to \"Public\" or permission refused). Start menu → type PowerShell → right-click → \"Run as administrator\", paste these two lines, then reload the page on the phone:",
+                "Windows bloquea el teléfono (Wi-Fi en «Pública» o permiso rechazado). Menú Inicio → escribe PowerShell → clic derecho → «Ejecutar como administrador», pega estas dos líneas y recarga la página en el teléfono:")}}</p>
+            <pre>Get-NetConnectionProfile | Set-NetConnectionProfile -NetworkCategory Private
+            New-NetFirewallRule -DisplayName "ChestCounter+ (telephone)" -Direction Inbound -Protocol TCP -LocalPort {{new Uri(url).Port}} -Action Allow -Profile Private</pre>
+            <p class="small">{{L.T("La 1re passe ton Wi-Fi de maison en réseau privé, la 2e ouvre seulement le port du téléphone, et seulement sur les réseaux privés. À faire une seule fois.",
+                "The 1st sets your home Wi-Fi to private, the 2nd only opens the phone's port, and only on private networks. Only once.",
+                "La 1.ª pone tu Wi-Fi de casa como red privada, la 2.ª solo abre el puerto del teléfono, y solo en redes privadas. Una sola vez.")}}</p></div>
             <code>{{h}}</code></main></body></html>
             """;
         File.WriteAllText(path, html);

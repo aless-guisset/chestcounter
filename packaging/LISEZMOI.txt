@@ -153,6 +153,10 @@ Le téléphone (PC ou PS5)
      pas sur un Wi-Fi invité). Scanne le QR code avec l'appareil photo.
      Ça ne charge pas ? Windows : Paramètres -> Réseau et Internet -> Wi-Fi ->
      ton réseau -> "Réseau privé".
+     Toujours bloqué ? Menu Démarrer -> PowerShell -> clic droit -> "Exécuter en
+     tant qu'administrateur", colle ces 2 lignes (une seule fois) :
+       Get-NetConnectionProfile | Set-NetConnectionProfile -NetworkCategory Private
+       New-NetFirewallRule -DisplayName "ChestCounter+ (telephone)" -Direction Inbound -Protocol TCP -LocalPort 8723 -Action Allow -Profile Private
   4. Pour l'avoir comme une appli : menu du navigateur -> "Ajouter à l'écran d'accueil".
 
 Sur la page : ta barre (total, session, chances), et en mode Console :
