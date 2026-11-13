@@ -60,11 +60,14 @@ public static class LiveScreen
 
     public static string NextModes(string? setting) => (setting ?? "br") switch { "br" => "br+reload", "br+reload" => "all", _ => "br" };
 
-    /// <summary>Réglage → fenêtre à lire : null = rien, "" = Fortnite (PC), sinon un mot du titre / du programme.</summary>
+    /// <summary>Auto : Fortnite sur ce PC, sinon Chiaki ou PS Remote Play. Pareil quelle que soit la plateforme choisie.</summary>
+    public const string AnyWindow = "*";
+
+    /// <summary>Réglage → fenêtre à lire : null = rien, "" = Fortnite (PC), "*" = auto, sinon un mot du titre / du programme.</summary>
     public static string? Target(string? setting, bool console) => (setting ?? "auto").ToLowerInvariant() switch
     {
         "off" => null,
-        "auto" => console ? "chiaki|remoteplay" : "",
+        "auto" => AnyWindow,
         "fortnite" => "",
         var s => s,
     };
@@ -72,6 +75,7 @@ public static class LiveScreen
     public static string Describe(string? setting, bool console) => Target(setting, console) switch
     {
         null => L.T("désactivée", "off", "desactivada"),
+        AnyWindow => L.T("Fortnite sur ce PC, sinon Chiaki ou PS Remote Play", "Fortnite on this PC, else Chiaki or PS Remote Play", "Fortnite en este PC, si no Chiaki o PS Remote Play"),
         "" => L.T("fenêtre de Fortnite (PC)", "Fortnite window (PC)", "ventana de Fortnite (PC)"),
         "chiaki|remoteplay" => L.T("Chiaki ou PS Remote Play", "Chiaki or PS Remote Play", "Chiaki o PS Remote Play"),
         "chiaki" => L.T("Chiaki (PS5 à distance)", "Chiaki (PS5 remote play)", "Chiaki (PS5 a distancia)"),
@@ -90,6 +94,13 @@ public static class LiveScreen
         "obs" => "off",
         _ => "auto",
     };
+
+    /// <summary>Le jeu lui-même d'abord (PC), sinon la fenêtre qui montre la console.</summary>
+    private static IntPtr FindAny()
+    {
+        var h = ScreenOcr.FindWindow(null);
+        return h != IntPtr.Zero ? h : ScreenOcr.FindWindow("chiaki|remoteplay");
+    }
 
     private static Thread? _thread;
     private static volatile bool _stop;
@@ -139,7 +150,8 @@ public static class LiveScreen
                 {
                     hwnd = IntPtr.Zero;
                     if (DateTime.UtcNow < nextFind) { Thread.Sleep(1000); continue; }
-                    hwnd = ScreenOcr.FindWindow(current.Length == 0 ? null : current);
+                    hwnd = current == AnyWindow ? FindAny()
+                        : ScreenOcr.FindWindow(current.Length == 0 ? null : current);
                     nextFind = DateTime.UtcNow.AddSeconds(5);
                     if (hwnd == IntPtr.Zero) { InLobby = null; continue; }
                     WindowTitle = ScreenOcr.Title(hwnd);

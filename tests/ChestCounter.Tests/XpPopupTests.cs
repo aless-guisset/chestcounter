@@ -218,3 +218,16 @@ public class XpComboTests
         Assert.Equal(1, c.Credit("ammo", "AMMO BOX", 0, T0.AddSeconds(104)));       // les munitions à part
     }
 }
+
+public class ScreenTargetTests
+{
+    [Fact]
+    public void Auto_IsTheSameOnPcAndConsole()
+    {
+        // 13/11 : une joueuse PC réglée sur « Console » n'avait rien de lu (auto cherchait seulement Chiaki).
+        Assert.Equal(LiveScreen.AnyWindow, LiveScreen.Target("auto", console: true));
+        Assert.Equal(LiveScreen.AnyWindow, LiveScreen.Target("auto", console: false));
+        Assert.Equal("", LiveScreen.Target("fortnite", true));
+        Assert.Null(LiveScreen.Target("off", false));
+    }
+}
