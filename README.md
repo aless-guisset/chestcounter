@@ -237,7 +237,7 @@ They work everywhere, even in game.
 | Setting | Values |
 |---|---|
 | Platform | PC (replays) · Console (Epic account) |
-| Screen reading | auto (PC → Fortnite, console → Chiaki) · Fortnite · Chiaki · OBS · off |
+| Screen reading | auto (PC → Fortnite, console → Chiaki or PS Remote Play) · Fortnite · Chiaki · PS Remote Play · OBS · off |
 | Modes counted live | Battle Royale only · Battle Royale + Reload · all modes |
 | Overlay | on / off, style (bar, HUD, classic), size, opacity, position |
 | Open with Fortnite | starts the counter when Fortnite starts (Windows *Run* key) |

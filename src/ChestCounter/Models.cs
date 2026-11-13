@@ -118,7 +118,7 @@ public sealed class Config
     public string? PhoneToken { get; set; }
     public int PhonePort { get; set; } = 8723;
 
-    /// <summary>Lecture de l'écran (coffres en direct) : "auto" (PC → Fortnite, console → Chiaki), "fortnite", "chiaki", "obs", "off" ou un mot du titre.</summary>
+    /// <summary>Lecture de l'écran (coffres en direct) : "auto" (PC → Fortnite, console → Chiaki ou PS Remote Play), "fortnite", "chiaki", "remoteplay", "obs", "off" ou un mot du titre.</summary>
     public string ScreenSource { get; set; } = "auto";
 
     /// <summary>Modes comptés en direct : "br" (Battle Royale seulement, défaut), "br+reload" ou "all".</summary>

@@ -156,12 +156,14 @@ public static class ScreenOcr
         }
         // Fenêtres du programme lui-même (« chiaki » → chiaki-ng.exe) ou dont le titre contient le texte ; la plus grande
         // (Chiaki ouvre une petite fenêtre de menu et une grande pour le jeu).
+        // Plusieurs choix possibles : « chiaki|remoteplay » (Chiaki ou l'appli PS Remote Play de Sony).
+        var names = title.Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         var pids = new HashSet<uint>();
         foreach (var p in Process.GetProcesses())
         {
             using (p)
             {
-                try { if (p.ProcessName.Contains(title, StringComparison.OrdinalIgnoreCase)) pids.Add((uint)p.Id); } catch { }
+                try { if (names.Any(n => p.ProcessName.Contains(n, StringComparison.OrdinalIgnoreCase))) pids.Add((uint)p.Id); } catch { }
             }
         }
         var best = IntPtr.Zero;
@@ -172,7 +174,7 @@ public static class ScreenOcr
             GetWindowThreadProcessId(h, out var pid);
             var sb = new StringBuilder(512);
             GetWindowText(h, sb, sb.Capacity);
-            if (!pids.Contains(pid) && !sb.ToString().Contains(title, StringComparison.OrdinalIgnoreCase)) return true;
+            if (!pids.Contains(pid) && !names.Any(n => sb.ToString().Replace(" ", "").Contains(n, StringComparison.OrdinalIgnoreCase))) return true;
             if (!GetWindowRect(h, out var r)) return true;
             long area = (long)(r.Right - r.Left) * (r.Bottom - r.Top);
             if (pids.Contains(pid)) area *= 4; // le programme passe avant un onglet du navigateur qui en parle

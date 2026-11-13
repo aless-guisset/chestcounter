@@ -64,7 +64,7 @@ public static class LiveScreen
     public static string? Target(string? setting, bool console) => (setting ?? "auto").ToLowerInvariant() switch
     {
         "off" => null,
-        "auto" => console ? "chiaki" : "",
+        "auto" => console ? "chiaki|remoteplay" : "",
         "fortnite" => "",
         var s => s,
     };
@@ -73,7 +73,9 @@ public static class LiveScreen
     {
         null => L.T("désactivée", "off", "desactivada"),
         "" => L.T("fenêtre de Fortnite (PC)", "Fortnite window (PC)", "ventana de Fortnite (PC)"),
+        "chiaki|remoteplay" => L.T("Chiaki ou PS Remote Play", "Chiaki or PS Remote Play", "Chiaki o PS Remote Play"),
         "chiaki" => L.T("Chiaki (PS5 à distance)", "Chiaki (PS5 remote play)", "Chiaki (PS5 a distancia)"),
+        "remoteplay" => L.T("PS Remote Play (appli Sony)", "PS Remote Play (Sony app)", "PS Remote Play (app de Sony)"),
         "obs" => L.T("OBS (carte de capture)", "OBS (capture card)", "OBS (capturadora)"),
         var t => t,
     } + ((setting ?? "auto") == "auto" ? L.T(" · auto", " · auto", " · auto") : "");
@@ -83,7 +85,8 @@ public static class LiveScreen
     {
         "auto" => "fortnite",
         "fortnite" => "chiaki",
-        "chiaki" => "obs",
+        "chiaki" => "remoteplay",
+        "remoteplay" => "obs",
         "obs" => "off",
         _ => "auto",
     };
