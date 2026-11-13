@@ -134,7 +134,14 @@ logiciel de stream qui regarde l'image).
   - PS5 : ouvre Chiaki (Remote Play sur le PC, gratuit) ou OBS (carte de capture)
     et laisse sa fenêtre ouverte, en grand si possible. Elle peut être derrière
     d'autres fenêtres, mais pas réduite dans la barre des tâches.
-  - Réglages -> "Lecture de l'écran" : auto, Fortnite, Chiaki, OBS ou désactivée.
+  - Astuce PS5 pour jouer sur la télé avec ta manette : utiliser une manette sur la
+    console coupe normalement le Remote Play. Ce qui marche : ajoute un DEUXIÈME
+    compte PSN sur la PS5 (gratuit), active la Lecture à distance pour lui et
+    enregistre Chiaki avec CE compte (Paramètres -> Système -> Lecture à distance ->
+    Associer un appareil). Joue sur ton compte principal à la télé, et lance la
+    session Chiaki du deuxième compte sur le PC : elle ne sert qu'à montrer l'image.
+    Si Chiaki se coupe, relance sa session ; l'appli PS Remote Play marche aussi.
+  - Réglages -> "Lecture de l'écran" : auto, Fortnite, Chiaki, PS Remote Play, OBS ou désactivée.
   - Le mode est lu sur la carte du lobby. Par défaut, seul le Battle Royale est
     compté en direct ; Réglages -> "Modes comptés en direct" pour ajouter
     Recharge ou tous les modes.

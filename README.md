@@ -135,6 +135,20 @@ Where to read:
 - **PS5**: [chiaki-ng](https://github.com/streetpea/chiaki-ng) (free Remote Play client for PC) or OBS (capture card).
   Make the window as big as you can (1080p reads best).
 
+#### Tip: play on the TV with your controller, let Chiaki only watch
+
+Using a controller directly on the PS5 normally ends a Remote Play session. The setup that works (tested for whole
+matches):
+
+1. Add a **second PSN account** to the PS5 (a free one is fine), enable *Remote Play* for it and register chiaki-ng
+   with **that** account (*Settings → System → Remote Play → Link Device* gives the PIN).
+2. Play on your **main account** on the TV, with your controller on the console as usual.
+3. Start the Chiaki session with the **second account** on the PC and leave its window open: it only shows the picture,
+   the counter reads it. Don't touch a controller on the PC.
+
+If Chiaki drops once, just reconnect it; the counter picks it up again by itself. The official **PS Remote Play** app
+works too (*Screen reading: auto* finds Chiaki or Remote Play).
+
 ### Console mode (PS5, Xbox, Switch)
 
 Console replays never leave the console, so ChestCounter+ reads your **Epic account** instead (one-time sign-in,
