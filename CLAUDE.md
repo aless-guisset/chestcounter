@@ -20,7 +20,7 @@ Utilisateur francophone : UI, messages et commentaires du code ajouté en franç
 ~/.dotnet/dotnet publish src/ChestCounter/ChestCounter.csproj -c Release -r win-x64 --self-contained true \
   -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true \
   -p:DebugType=none -o dist
-cp dist/ChestCounterPlus.exe /mnt/c/Users/adm_loc/Desktop/ChestCounterPlus-Prive/
+cp dist/ChestCounterPlus.exe "$WIN_HOME_U"/Desktop/ChestCounterPlus-Prive/
 ```
 
 SDK .NET 10 dans `~/.dotnet` (Windows n'a que le SDK 8).

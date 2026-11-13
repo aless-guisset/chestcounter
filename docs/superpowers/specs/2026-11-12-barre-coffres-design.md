@@ -1,6 +1,6 @@
 # Barre des coffres (nouvel overlay) — description
 
-Date : 2026-11-12 · Branche `ps5` · Maquette validée : `C:\Users\adm_loc\ChestCounterPC\Maquettes\barre-coffres.html`
+Date : 2026-11-12 · Branche `ps5` · Maquette validée : `%USERPROFILE%\ChestCounterPC\Maquettes\barre-coffres.html`
 
 ## Pourquoi
 

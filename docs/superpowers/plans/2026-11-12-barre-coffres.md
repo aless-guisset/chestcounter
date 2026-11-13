@@ -45,7 +45,7 @@
 - [ ] **Step 1:** Créer le projet de tests ; `~/.dotnet/dotnet test tests/ChestCounter.Tests` passe (0 test).
 - [ ] **Step 2: Test** `Import_CopiesAndLowersAnalyzerVersion` : dossier source temporaire avec `config.json`, `data.json` (`AnalyzerVersion` 16, un match à 16, un à 12), `ps5/auth.json`, `webview/x` → après import : destination contient `config.json`, `ps5/auth.json`, pas `webview` ; versions 16 → 0, 12 reste 12 ; source inchangée (même octets). Second appel → `false`, rien réécrit.
 - [ ] **Step 3:** Lancer, voir l'échec.
-- [ ] **Step 4:** Implémenter ; renommer assembly/mutex/Run/dossier ; `deploy.sh` copie `ChestCounterPlus.exe` dans `C:\Users\adm_loc\ChestCounterPC\` et met à jour les `.bat` + `Bureau\ChestCounter.bat`.
+- [ ] **Step 4:** Implémenter ; renommer assembly/mutex/Run/dossier ; `deploy.sh` copie `ChestCounterPlus.exe` dans `%USERPROFILE%\ChestCounterPC\` et met à jour les `.bat` + `Bureau\ChestCounter.bat`.
 - [ ] **Step 5:** Tests verts ; build OK.
 - [ ] **Step 6:** Commit `feat: identité séparée de LED-N (dossier ChestCounterPlus, import par copie)`.
 
@@ -120,7 +120,7 @@
 - Consumes: `BarView` (Task 5). Couleurs de la maquette : fond `#0B0F18` (opacité réglage), bordure `#FFD666` à 35 %, total `#FFD666`, libellés `#B8BFCC`, détails `#7D8597`, badge direct/estimation bleu `#9CC0FF`, confirmé vert `#8DE0A5`. Largeur 270 px à 100 %, mise à l'échelle avec `Sc()`.
 
 - [ ] **Step 1:** Implémenter le dessin et le cycle.
-- [ ] **Step 2:** Build, puis captures sur Windows avec `CHESTCOUNTER_OVERLAY_SNAPSHOT` dans un dossier `--data` de test (fermé, Résumé, Coffres ; PC et PS5) ; comparer à la maquette `C:\Users\adm_loc\ChestCounterPC\Maquettes\barre-coffres.html`. Attendu : barre fermée = icône + total + badge ; aucun chevauchement de texte à 70 % et 175 %.
+- [ ] **Step 2:** Build, puis captures sur Windows avec `CHESTCOUNTER_OVERLAY_SNAPSHOT` dans un dossier `--data` de test (fermé, Résumé, Coffres ; PC et PS5) ; comparer à la maquette `%USERPROFILE%\ChestCounterPC\Maquettes\barre-coffres.html`. Attendu : barre fermée = icône + total + badge ; aucun chevauchement de texte à 70 % et 175 %.
 - [ ] **Step 3:** Commit `feat: overlay en barre déroulante (Ctrl+Maj+E)`.
 
 ### Task 7: « Trésors obtenus » dans la console
@@ -135,7 +135,7 @@
 ### Task 8: Paquet à partager
 
 **Files:**
-- Create: `package.sh` (build, puis dossier `dist/ChestCounterPlus/` avec `ChestCounterPlus.exe`, `Lancer ChestCounter+.bat`, `Test XP (40 min).bat` adapté, `LISEZMOI.txt` (installation à côté de LED-N), zip `C:\Users\adm_loc\Desktop\ChestCounterPlus.zip` via PowerShell `Compress-Archive`)
+- Create: `package.sh` (build, puis dossier `dist/ChestCounterPlus/` avec `ChestCounterPlus.exe`, `Lancer ChestCounter+.bat`, `Test XP (40 min).bat` adapté, `LISEZMOI.txt` (installation à côté de LED-N), zip `%USERPROFILE%\Desktop\ChestCounterPlus.zip` via PowerShell `Compress-Archive`)
 - Modify: `CLAUDE.md` (nouveau nom, import, paquet)
 
 - [ ] **Step 1:** Écrire le script, le lancer ; le zip contient exactement ces 4 fichiers, pas de `auth.json`.
