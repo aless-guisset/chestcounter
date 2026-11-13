@@ -68,6 +68,14 @@ public static class ScreenOcr
                     Thread.Sleep(2000);
                     continue;
                 }
+                if (hwnd != _lastWindow)
+                {
+                    _lastWindow = hwnd;
+                    var sb = new StringBuilder(512);
+                    GetWindowText(hwnd, sb, sb.Capacity);
+                    GetWindowRect(hwnd, out var wr);
+                    Log($"fenêtre lue : « {sb} » ({wr.Right - wr.Left}×{wr.Bottom - wr.Top})");
+                }
                 if (Capture(hwnd) is { } frame)
                 {
                     var lines = Recognize(engine, frame).Where(l => Interesting.IsMatch(l.Text)).ToList();
@@ -96,6 +104,8 @@ public static class ScreenOcr
         return 0;
     }
 
+    private static IntPtr _lastWindow;
+
     public sealed record Frame(byte[] Bgra, int Width, int Height);
 
     /// <summary>Fenêtre de Fortnite (processus du jeu), ou la première fenêtre visible dont le titre contient le texte.</summary>
@@ -111,6 +121,19 @@ public static class ScreenOcr
                 }
             }
             return IntPtr.Zero;
+        }
+        // D'abord le programme lui-même (« chiaki » → chiaki.exe), pour ne pas prendre un onglet du navigateur qui en parle.
+        foreach (var p in Process.GetProcesses())
+        {
+            using (p)
+            {
+                try
+                {
+                    if (p.ProcessName.Contains(title, StringComparison.OrdinalIgnoreCase) && p.MainWindowHandle != IntPtr.Zero && IsWindowVisible(p.MainWindowHandle))
+                        return p.MainWindowHandle;
+                }
+                catch { }
+            }
         }
         var found = IntPtr.Zero;
         EnumWindows((h, _) =>
