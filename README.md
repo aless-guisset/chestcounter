@@ -164,8 +164,14 @@ replay is ticked automatically.
 
 ### Phone companion
 
-Menu **Phone (QR code)**: the PC serves a small page on your local network. Scan the QR code with the phone's camera
-(same Wi-Fi), then *Add to Home screen* to keep it like an app.
+Menu **Phone (QR code)**: the PC serves a small page on your local network. Scan the QR code with the phone's camera,
+then *Add to Home screen* to keep it like an app.
+
+> [!IMPORTANT]
+> - The phone must be on the **same Wi-Fi** as the PC (not on 4G/5G, not on a guest Wi-Fi).
+> - The first time, Windows shows a **Windows Firewall** prompt for ChestCounter+: tick **Private networks** and click
+>   **Allow**. Without it, the phone cannot reach the PC.
+> - Still not loading? In Windows, *Settings → Network & internet → Wi-Fi → your network* and set it to **Private network**.
 
 <img src="docs/plus/phone.png" alt="Phone page" width="300">
 

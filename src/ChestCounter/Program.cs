@@ -864,9 +864,9 @@ List<(string Label, Action Run, string? About)> Items()
                 var qr = Path.Combine(store.Folder, "telephone.html");
                 PhoneServer.WriteQrPage(qr, url);
                 Open(qr);
-            }, L.T("Affiche un QR code : scanne-le avec ton téléphone (même Wi-Fi) pour voir la barre, compter « +1 coffre » en partie et répondre en fin de partie. Si Windows demande, autorise les réseaux privés.",
-                "Shows a QR code: scan it with your phone (same Wi-Fi) to see the bar, count \"+1 chest\" in a match and answer at the end of a match. If Windows asks, allow private networks.",
-                "Muestra un código QR: escanéalo con tu teléfono (misma Wi-Fi) para ver la barra, contar «+1 cofre» en partida y responder al final. Si Windows pregunta, permite las redes privadas.")));
+            }, L.T("Affiche un QR code : scanne-le avec ton téléphone pour voir la barre, compter « +1 coffre » en partie et répondre en fin de partie. Téléphone sur le MÊME Wi-Fi que le PC, et quand Windows demande (Pare-feu) : coche « Réseaux privés » puis « Autoriser ».",
+                "Shows a QR code: scan it with your phone to see the bar, count \"+1 chest\" in a match and answer at the end of a match. Phone on the SAME Wi-Fi as the PC, and when Windows asks (Firewall): tick \"Private networks\" then \"Allow\".",
+                "Muestra un código QR: escanéalo con tu teléfono para ver la barra, contar «+1 cofre» en partida y responder al final. Teléfono en la MISMA Wi-Fi que el PC y, cuando Windows pregunte (Firewall): marca «Redes privadas» y luego «Permitir».")));
             list.Add(Item(L.T("Trésors obtenus (cocher)", "Treasures obtained (tick)", "Tesoros conseguidos (marcar)"), () =>
             {
                 SubScreen(() => TreasureChecklist.Run(config.IsConsole ? Ps5Mode.Folder : store.Folder, appName));

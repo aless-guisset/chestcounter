@@ -147,8 +147,12 @@ Le téléphone (PC ou PS5)
 =========================================================
 
   1. Dans le compteur : menu "Téléphone (QR code)". Une page s'ouvre avec un QR code.
-  2. Si Windows demande l'autorisation réseau : coche "Réseaux privés" -> Autoriser.
-  3. Téléphone sur le même Wi-Fi que le PC : scanne le QR code avec l'appareil photo.
+  2. IMPORTANT : Windows affiche une fenêtre "Pare-feu Windows" pour ChestCounter+.
+     Coche "Réseaux privés" puis "Autoriser". Sans ça, le téléphone ne trouve pas le PC.
+  3. IMPORTANT : le téléphone doit être sur le MÊME Wi-Fi que le PC (pas en 4G/5G,
+     pas sur un Wi-Fi invité). Scanne le QR code avec l'appareil photo.
+     Ça ne charge pas ? Windows : Paramètres -> Réseau et Internet -> Wi-Fi ->
+     ton réseau -> "Réseau privé".
   4. Pour l'avoir comme une appli : menu du navigateur -> "Ajouter à l'écran d'accueil".
 
 Sur la page : ta barre (total, session, chances), et en mode Console :
