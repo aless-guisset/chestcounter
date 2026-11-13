@@ -263,6 +263,9 @@ public static class ScreenOcr
                 foreach (var l in lines.Where(l => XpPopup.IsUsefulLabel(l.Text) && !events.Any(e => e.Label == l.Text.Trim())))
                     tr.Add(new XpPopup.Event(0, l.Text.Trim()), t0);
             }
+            var lobby = XpPopup.IsLobby(Recognize(engine, XpPopup.Top(f)));
+            var leftLines = Recognize(engine, XpPopup.Left(f));
+            Console.WriteLine($"{Path.GetFileName(file)} : lobby {lobby} · mode {XpPopup.ModeOf(leftLines) ?? "?"} (carte : {string.Join(" / ", leftLines.Select(l => l.Text))})");
             var found = tr.Flush(t0, all: true);
             Console.WriteLine($"{Path.GetFileName(file)} : " + (found.Count == 0 ? "rien" : string.Join(" | ", found.Select(e => $"+{e.Xp} XP · {e.Label} → {XpPopup.Kind(e.Label)}"))));
         }

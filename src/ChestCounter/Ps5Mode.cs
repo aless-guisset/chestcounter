@@ -1212,7 +1212,7 @@ public static class Ps5Mode
     private static bool? _lastLobby;
 
     /// <summary>En partie d'après l'écran (Chiaki lu, menu du lobby absent).</summary>
-    private static bool ScreenInMatch => LiveScreen.Active && LiveScreen.InLobby == false;
+    private static bool ScreenInMatch => LiveScreen.Counting;
 
     /// <summary>Coffres et munitions lus à l'écran → partie en cours. Retour au lobby → relevé Epic tout de suite (fin de partie).</summary>
     private static bool ScreenTick()

@@ -135,6 +135,9 @@ logiciel de stream qui regarde l'image).
     et laisse sa fenêtre ouverte, en grand si possible. Elle peut être derrière
     d'autres fenêtres, mais pas réduite dans la barre des tâches.
   - Réglages -> "Lecture de l'écran" : auto, Fortnite, Chiaki, OBS ou désactivée.
+  - Le mode est lu sur la carte du lobby. Par défaut, seul le Battle Royale est
+    compté en direct ; Réglages -> "Modes comptés en direct" pour ajouter
+    Recharge ou tous les modes.
 La barre affiche alors "● EN DIRECT" avec le nombre de coffres de la partie.
 Menu "Journal de partie (aujourd'hui)" : chaque coffre, boîte, élimination, avec l'heure.
 

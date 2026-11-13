@@ -120,6 +120,9 @@ public sealed class Config
 
     /// <summary>Lecture de l'écran (coffres en direct) : "auto" (PC → Fortnite, console → Chiaki), "fortnite", "chiaki", "obs", "off" ou un mot du titre.</summary>
     public string ScreenSource { get; set; } = "auto";
+
+    /// <summary>Modes comptés en direct : "br" (Battle Royale seulement, défaut), "br+reload" ou "all".</summary>
+    public string ScreenModes { get; set; } = "br";
     public int? OverlayX { get; set; }
     public int? OverlayY { get; set; }
     /// <summary>Locked overlay = click-through, cannot be moved (Ctrl+Shift+L to toggle).</summary>

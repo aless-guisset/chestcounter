@@ -138,4 +138,28 @@ public class XpPopupTests
     [InlineData(new[] { "+600 XP", "CHEST", "0:27" }, false)]
     public void IsLobby_FromTopMenu(string[] words, bool lobby) =>
         Assert.Equal(lobby, XpPopup.IsLobby(words.Select(w => new ScreenOcr.Line(w, 10, 5, 5, 3))));
+
+    [Theory]
+    [InlineData(new[] { "Next Map 3m", "Squid Grounds", "RELOAD", "Zero Build, Solo", "PLAY" }, "reload")]
+    [InlineData(new[] { "RELØAD", "Zero Build, Solo" }, "reload")]
+    [InlineData(new[] { "REI.OAD", "-2; Zero Build, Solo" }, "reload")]   // lu tel quel sur ton lobby
+    [InlineData(new[] { "BATTLE ROYALE", "Zero Build, Duos" }, "br")]
+    [InlineData(new[] { "BATTLE", "ROYALE", "Solo" }, "br")]
+    [InlineData(new[] { "RANKED", "Battle Royale" }, "br")]
+    [InlineData(new[] { "LEGO Fortnite", "Odyssey" }, "other")]
+    [InlineData(new[] { "FESTIVAL" }, "other")]
+    [InlineData(new[] { "PLAY" }, null)]                     // rien de lisible : on ne sait pas
+    public void ModeOf_LobbyCard(string[] lines, string? mode) =>
+        Assert.Equal(mode, XpPopup.ModeOf(lines.Select(t => new ScreenOcr.Line(t, 10, 50, 10, 3))));
+
+    [Theory]
+    [InlineData("br", "br", true)]
+    [InlineData("br", "reload", false)]
+    [InlineData("br", "other", false)]
+    [InlineData("br", null, true)]             // mode pas lu : on compte (mieux vaut trop que rien), le journal le dit
+    [InlineData("br+reload", "reload", true)]
+    [InlineData("br+reload", "other", false)]
+    [InlineData("all", "other", true)]
+    [InlineData(null, "reload", false)]         // réglage absent = Battle Royale seulement
+    public void ModeAllowed(string? setting, string? mode, bool allowed) => Assert.Equal(allowed, LiveScreen.Allowed(setting, mode));
 }

@@ -60,6 +60,30 @@ public static class XpPopup
         return LobbyWords.Count(words.Contains) >= 3;
     }
 
+    /// <summary>
+    /// Mode choisi d'après la carte du lobby (à gauche) : "br" (Battle Royale, classée comprise), "reload" (Recharge),
+    /// "other" (LEGO, Festival, îles créatives…), null si rien de lisible.
+    /// </summary>
+    public static string? ModeOf(IEnumerable<ScreenOcr.Line> lines)
+    {
+        var text = string.Join(" ", lines.Select(l => l.Text)).ToUpperInvariant();
+        if (Regex.IsMatch(text, @"RE[LI1!|][.,\s]?[OØ0]AD|RECHARGE")) return "reload";
+        if (Regex.IsMatch(text, @"BATTLE\s*ROYAL|ROYALE|BATTLE")) return "br";
+        if (Regex.IsMatch(text, @"LEGO|FESTIVAL|ROCKET|RACING|CREATI|DELULU|BALLISTIC|BLITZ|OG\b|UEFN|ISLAND|ÎLE|DISCOVER")) return "other";
+        return null;
+    }
+
+    /// <summary>La moitié gauche de l'image du jeu (carte du mode au lobby).</summary>
+    public static ScreenOcr.Frame Left(ScreenOcr.Frame f)
+    {
+        var (gx, gy, gw, gh) = GameArea(f);
+        if (gw < f.Width / 3 || gh < f.Height / 3) (gx, gy, gw, gh) = (0, 0, f.Width, f.Height);
+        int y0 = gy + gh / 4, h = Math.Max(2, Math.Min(gh * 3 / 4, f.Height - y0)), w = Math.Max(2, gw * 3 / 10);
+        var o = new byte[w * h * 4];
+        for (var y = 0; y < h; y++) Buffer.BlockCopy(f.Bgra, ((y0 + y) * f.Width + gx) * 4, o, y * w * 4, w * 4);
+        return new ScreenOcr.Frame(o, w, h);
+    }
+
     /// <summary>Le haut de l'image du jeu (menu du lobby), sans agrandir.</summary>
     public static ScreenOcr.Frame Top(ScreenOcr.Frame f)
     {

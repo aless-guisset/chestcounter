@@ -489,7 +489,11 @@ if (config.PhoneEnabled && interactive)
 // Lecture de l'écran (coffres en direct) : fil à part, suit le réglage « Lecture de l'écran ».
 if (interactive)
 {
-    LiveScreen.Start(() => LiveScreen.Target(config.ScreenSource, config.IsConsole), store.Folder);
+    LiveScreen.Start(() =>
+    {
+        LiveScreen.ModesSetting = config.ScreenModes;
+        return LiveScreen.Target(config.ScreenSource, config.IsConsole);
+    }, store.Folder);
 }
 
 // ---- Main screen ---------------------------------------------------------------------------
@@ -964,6 +968,15 @@ List<(string Label, Action Run, string? About)> Items()
                 }, L.T("Compte les coffres en direct en lisant le « +XP » affiché (« +600 XP · CHEST »). PC : la fenêtre de Fortnite. PS5 : Chiaki (Remote Play sur le PC) ou OBS (carte de capture), même cachés derrière d'autres fenêtres mais pas réduits. Ne touche pas au jeu. Entrée pour changer.",
                     "Counts chests live by reading the \"+XP\" shown (\"+600 XP · CHEST\"). PC: the Fortnite window. PS5: Chiaki (Remote Play on the PC) or OBS (capture card), even behind other windows but not minimized. Does not touch the game. Enter to switch.",
                     "Cuenta los cofres en directo leyendo el «+XP» mostrado («+600 XP · CHEST»). PC: la ventana de Fortnite. PS5: Chiaki (Remote Play en el PC) u OBS (capturadora), aunque estén detrás de otras ventanas pero no minimizadas. No toca el juego. Intro para cambiar.")));
+                list.Add(Item($"{L.T("Modes comptés en direct", "Modes counted live", "Modos contados en directo")} : {LiveScreen.DescribeModes(config.ScreenModes)}"
+                    + (LiveScreen.LobbyMode != null ? L.T($" (lobby : {LiveScreen.ModeName(LiveScreen.LobbyMode)})", $" (lobby: {LiveScreen.ModeName(LiveScreen.LobbyMode)})", $" (lobby: {LiveScreen.ModeName(LiveScreen.LobbyMode)})") : ""), () =>
+                {
+                    config.ScreenModes = LiveScreen.NextModes(config.ScreenModes);
+                    LiveScreen.ModesSetting = config.ScreenModes;
+                    try { store.SaveConfig(config); } catch { }
+                }, L.T("Le mode est lu sur la carte du lobby (Battle Royale, Recharge, LEGO…). Par défaut, seul le Battle Royale est compté en direct. Entrée pour changer.",
+                    "The mode is read on the lobby card (Battle Royale, Reload, LEGO…). By default, only Battle Royale is counted live. Enter to switch.",
+                    "El modo se lee en la tarjeta del lobby (Battle Royale, Recarga, LEGO…). Por defecto, solo el Battle Royale se cuenta en directo. Intro para cambiar.")));
                 if (config.ShowOverlay)
                 {
                     string StyleName(string s) => s == "classic"

@@ -25,6 +25,41 @@ public static class LiveScreen
 
     public static string? WindowTitle { get; private set; }
 
+    /// <summary>Mode lu sur la carte du lobby (dernier vu) et mode de la partie en cours (figé en quittant le lobby).</summary>
+    public static string? LobbyMode { get; private set; }
+    public static string? MatchMode { get; private set; }
+
+    /// <summary>Réglage des modes comptés en direct : "br" (défaut), "br+reload", "all".</summary>
+    public static volatile string? ModesSetting;
+
+    /// <summary>Le mode est-il compté ? Mode pas lu (null) : oui, mieux vaut compter que rater une partie.</summary>
+    public static bool Allowed(string? setting, string? mode) => (setting ?? "br") switch
+    {
+        "all" => true,
+        "br+reload" => mode is null or "br" or "reload",
+        _ => mode is null or "br",
+    };
+
+    /// <summary>En partie, dans un mode compté, avec l'écran lu : le direct est actif.</summary>
+    public static bool Counting => Active && InLobby == false && Allowed(ModesSetting, MatchMode);
+
+    public static string ModeName(string? mode) => mode switch
+    {
+        "br" => "Battle Royale",
+        "reload" => L.T("Recharge", "Reload", "Recarga"),
+        "other" => L.T("autre mode", "other mode", "otro modo"),
+        _ => L.T("mode pas lu", "mode not read", "modo no leído"),
+    };
+
+    public static string DescribeModes(string? setting) => (setting ?? "br") switch
+    {
+        "all" => L.T("tous les modes", "all modes", "todos los modos"),
+        "br+reload" => L.T("Battle Royale + Recharge", "Battle Royale + Reload", "Battle Royale + Recarga"),
+        _ => L.T("Battle Royale seulement", "Battle Royale only", "solo Battle Royale"),
+    };
+
+    public static string NextModes(string? setting) => (setting ?? "br") switch { "br" => "br+reload", "br+reload" => "all", _ => "br" };
+
     /// <summary>Réglage → fenêtre à lire : null = rien, "" = Fortnite (PC), sinon un mot du titre / du programme.</summary>
     public static string? Target(string? setting, bool console) => (setting ?? "auto").ToLowerInvariant() switch
     {
@@ -112,10 +147,13 @@ public static class LiveScreen
                 {
                     nextLobby = DateTime.UtcNow.AddSeconds(4);
                     var lobby = XpPopup.IsLobby(ScreenOcr.Recognize(engine, XpPopup.Top(frame)));
-                    if (InLobby != null && lobby != InLobby) Journal(lobby ? "── retour au lobby" : "── partie commencée");
+                    if (lobby && XpPopup.ModeOf(ScreenOcr.Recognize(engine, XpPopup.Left(frame))) is { } mode) LobbyMode = mode;
+                    if (InLobby == true && !lobby) MatchMode = LobbyMode; // on quitte le lobby : le mode de la partie
+                    if (InLobby != null && lobby != InLobby)
+                        Journal(lobby ? "── retour au lobby" : $"── partie commencée ({ModeName(MatchMode)}{(Allowed(ModesSetting, MatchMode) ? "" : L.T(", pas comptée", ", not counted", ", no contada"))})");
                     InLobby = lobby;
                 }
-                if (InLobby != true)
+                if (InLobby != true && Allowed(ModesSetting, MatchMode))
                 {
                     // ×3 suffit en grand (1080p) ; en petit, ×4 lit souvent ce que ×3 rate.
                     foreach (var scale in frame.Width >= 1500 ? new[] { 3 } : new[] { 3, 4 })
@@ -163,7 +201,7 @@ public static class LiveScreen
             changed = true;
         }
         _pcWasLive = matchInProgress;
-        if (matchInProgress && Active && InLobby != true && !PcRead)
+        if (matchInProgress && Active && InLobby != true && Allowed(ModesSetting, MatchMode) && !PcRead)
         {
             PcRead = true;
             changed = true;
