@@ -12,6 +12,12 @@ public sealed record ChanceLine(string Kind, string Label, string Percent, doubl
 /// <summary>Ce que la barre affiche. ChancesEmpty : texte à la place de la liste quand tout est obtenu.</summary>
 public sealed record BarView(string Total, BarState State, string Badge, IReadOnlyList<BarLine> Summary, IReadOnlyList<ChanceLine> Chances, string? ChancesEmpty);
 
+/// <summary>
+/// Console : la dernière partie vue (fin détectée par l'XP), si elle attend la réponse du joueur, les appuis « +1 coffre »
+/// de la partie en cours, et si la session contient des parties estimées (sans réponse).
+/// </summary>
+public sealed record ConsolePlay(int? LastValue, bool LastEstimated, DateTime? LastEndedUtc, bool LastNeedsAnswer, int CurrentTaps, bool SessionEstimated);
+
 /// <summary>Construit la barre des coffres depuis les données PC (replays) ou console (compte Epic).</summary>
 public static class BarModel
 {
@@ -63,14 +69,24 @@ public static class BarModel
     /// « — » quand on ne sait pas (session au-delà du plafond de 1 000, journée pas encore publiée).
     /// </summary>
     public static BarView ForPs5(int? total, bool totalEstimated, int? today, bool todayEstimated, int session, bool sessionKnown,
-        int weekChests, bool weekEstimated, int seasonChests, ObtainedStore obtained, DateTime utcNow)
+        int weekChests, bool weekEstimated, int seasonChests, ObtainedStore obtained, DateTime utcNow, ConsolePlay? play = null)
     {
         static string Val(int? n, bool est) => n == null ? "—" : (est ? "≈ " : "") + L.N(n.Value);
-        var lines = new List<BarLine>
+        var lines = new List<BarLine>();
+        if (play is { CurrentTaps: > 0 })
         {
-            new(L.T("Session", "Session", "Sesión"), sessionKnown ? "+" + L.N(session) : "—", L.T("depuis le lancement du compteur", "since the counter started", "desde que se abrió el contador")),
-            new(L.T("Aujourd'hui", "Today", "Hoy"), today == null ? "—" : (todayEstimated ? "≈ +" : "+") + L.N(today.Value)),
-        };
+            lines.Add(new(L.T("Partie en cours", "Current match", "Partida actual"), L.N(play.CurrentTaps), L.T("comptés au téléphone", "counted on the phone", "contados en el teléfono")));
+        }
+        else if (play is { LastValue: int lastValue, LastEndedUtc: DateTime ended })
+        {
+            var at = ended.ToLocalTime().ToString("HH:mm");
+            var detail = L.T($"finie à {at}", $"ended at {at}", $"terminó a las {at}")
+                + (play.LastNeedsAnswer ? L.T(" · combien ? (téléphone ou compteur)", " · how many? (phone or counter)", " · ¿cuántos? (teléfono o contador)") : "");
+            lines.Add(new(L.T("Dernière partie", "Last match", "Última partida"), Val(lastValue, play.LastEstimated), detail));
+        }
+        var sessionEst = play?.SessionEstimated == true;
+        lines.Add(new(L.T("Session", "Session", "Sesión"), sessionKnown ? (sessionEst ? "≈ +" : "+") + L.N(session) : "—", L.T("depuis le lancement du compteur", "since the counter started", "desde que se abrió el contador")));
+        lines.Add(new(L.T("Aujourd'hui", "Today", "Hoy"), today == null ? "—" : (todayEstimated ? "≈ +" : "+") + L.N(today.Value)));
         var week = TreasureOdds.CurrentWeek(utcNow);
         var (chances, empty) = Chances(week, weekChests, seasonChests, obtained, approx: weekEstimated);
         var estimated = totalEstimated || (today != null && todayEstimated) || weekEstimated;

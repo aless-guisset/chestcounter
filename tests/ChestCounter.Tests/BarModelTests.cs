@@ -102,6 +102,28 @@ public class BarModelTests : IDisposable
     }
 
     [Fact]
+    public void Build_Ps5LastMatchAwaitingAnswer()
+    {
+        var play = new ConsolePlay(9, true, Week2.AddMinutes(-3), true, 0, true);
+        var v = BarModel.ForPs5(1430, true, 52, true, 20, true, 40, true, 1430, new ObtainedStore(_dir), Week2, play);
+        var last = v.Summary[0];
+        Assert.Equal("Dernière partie", last.Label);
+        Assert.Equal("≈ 9", last.Value);
+        Assert.Contains("combien ?", last.Detail);
+        Assert.Equal("≈ +20", v.Summary.Single(l => l.Label == "Session").Value);
+    }
+
+    [Fact]
+    public void Build_Ps5TapsDuringMatch()
+    {
+        var play = new ConsolePlay(7, false, Week2.AddMinutes(-30), false, 4, false);
+        var v = BarModel.ForPs5(1430, true, 52, true, 20, true, 40, true, 1430, new ObtainedStore(_dir), Week2, play);
+        Assert.Equal("Partie en cours", v.Summary[0].Label);
+        Assert.Equal("4", v.Summary[0].Value);
+        Assert.Equal("+20", v.Summary.Single(l => l.Label == "Session").Value);
+    }
+
+    [Fact]
     public void Build_AllObtained()
     {
         var s = new ObtainedStore(_dir);
