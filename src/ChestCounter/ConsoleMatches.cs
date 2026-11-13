@@ -15,6 +15,10 @@ public sealed class PlayedMatch
     public int? Chests { get; set; }
     /// <summary>Appuis sur « +1 coffre » au téléphone pendant la partie.</summary>
     public int Taps { get; set; }
+    /// <summary>Coffres lus à l'écran pendant la partie (Chiaki, OBS…) ; null si l'écran n'était pas lu.</summary>
+    public int? Seen { get; set; }
+    /// <summary>Boîtes de munitions lues à l'écran.</summary>
+    public int Ammo { get; set; }
     public string? Source { get; set; }
 }
 
@@ -36,8 +40,10 @@ public static class ConsoleMatches
     /// <summary>Vrai si l'XP ou le niveau a changé depuis le relevé précédent : une partie vient de finir.</summary>
     public static bool Ended(string? previous, string? now) => previous != null && now != null && previous != now;
 
+    /// <summary>Réponse du joueur (ou Epic), sinon lecture de l'écran, sinon appuis, sinon moyenne (estimée).</summary>
     public static (int Value, bool Estimated) Value(PlayedMatch m, double? average) =>
-        m.Chests is int c ? (c, false) : m.Taps > 0 ? (m.Taps, false) : ((int)Math.Round(average ?? 0, MidpointRounding.AwayFromZero), true);
+        m.Chests is int c ? (c, false) : m.Seen is int s ? (s, false) : m.Taps > 0 ? (m.Taps, false)
+        : ((int)Math.Round(average ?? 0, MidpointRounding.AwayFromZero), true);
 
     public static (int Sum, bool Estimated) Sum(IEnumerable<PlayedMatch> matches, double? average)
     {
@@ -51,7 +57,7 @@ public static class ConsoleMatches
         return (sum, est);
     }
 
-    private static bool Known(PlayedMatch m) => m.Chests != null || m.Taps > 0;
+    private static bool Known(PlayedMatch m) => m.Chests != null || m.Seen != null || m.Taps > 0;
 
     /// <summary>Moyenne de coffres par partie : celle des réponses dès qu'il y en a 3, sinon celle donnée (étalonnage / rythme).</summary>
     public static double? Average(IEnumerable<PlayedMatch> matches, double? fallback)
@@ -82,7 +88,7 @@ public static class ConsoleMatches
         return c;
     }
 
-    public static PlayedMatch AddEnded(List<PlayedMatch> list, DateTime endedUtc, int taps, int? epicDelta)
+    public static PlayedMatch AddEnded(List<PlayedMatch> list, DateTime endedUtc, int taps, int? epicDelta, int? seen = null, int ammo = 0)
     {
         var m = new PlayedMatch
         {
@@ -90,7 +96,9 @@ public static class ConsoleMatches
             EndedUtc = endedUtc,
             Taps = taps,
             Chests = epicDelta,
-            Source = epicDelta != null ? "epic" : null,
+            Seen = seen,
+            Ammo = ammo,
+            Source = epicDelta != null ? "epic" : seen != null ? "screen" : null,
         };
         list.Add(m);
         if (list.Count > Keep) list.RemoveRange(0, list.Count - Keep);

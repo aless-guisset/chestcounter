@@ -117,6 +117,9 @@ public sealed class Config
     public bool PhoneEnabled { get; set; }
     public string? PhoneToken { get; set; }
     public int PhonePort { get; set; } = 8723;
+
+    /// <summary>Lecture de l'écran (coffres en direct) : "auto" (PC → Fortnite, console → Chiaki), "fortnite", "chiaki", "obs", "off" ou un mot du titre.</summary>
+    public string ScreenSource { get; set; } = "auto";
     public int? OverlayX { get; set; }
     public int? OverlayY { get; set; }
     /// <summary>Locked overlay = click-through, cannot be moved (Ctrl+Shift+L to toggle).</summary>

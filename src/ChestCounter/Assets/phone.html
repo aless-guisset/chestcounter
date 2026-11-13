@@ -127,8 +127,11 @@ function render() {
   // +1 coffre (console)
   if (c) {
     $("tapCard").classList.remove("hidden");
-    $("tapLabel").textContent = u.current; $("taps").textContent = c.taps;
-    $("tapBtn").textContent = u.tap; $("undoBtn").textContent = u.undo; $("tapHelp").textContent = u.tapHelp;
+    // Écran lu (Chiaki…) : le compte est automatique, plus besoin d'appuyer.
+    $("tapLabel").textContent = u.current + (c.screen ? " · " + u.screen : "");
+    $("taps").textContent = c.screen ? c.seen + (c.ammo ? ` · ${c.ammo} ${u.ammo}` : "") : c.taps;
+    document.querySelector(".tap").classList.toggle("hidden", !!c.screen);
+    $("tapBtn").textContent = u.tap; $("undoBtn").textContent = u.undo; $("tapHelp").textContent = c.screen ? u.screenHelp : u.tapHelp;
   } else $("tapCard").classList.add("hidden");
 
   $("summary").innerHTML = S.summary.map(l => `<div class="line"><div>${esc(l.label)}${l.detail ? `<div class="d">${esc(l.detail)}</div>` : ""}</div><div class="v">${esc(l.value)}</div></div>`).join("");
@@ -138,7 +141,7 @@ function render() {
       const val = `<span class="${m.estimated ? "est" : ""}">${m.estimated ? "≈ " : ""}${m.value}</span>`;
       if (editing === m.id) return `<div class="match"><span>${esc(m.ended)}</span>${val}</div><div class="row-edit">${steps(m.id, m.value)}</div>`
         + `<button class="forget" data-forget="${m.id}">${esc(u.notMatch)}</button>`;
-      return `<div class="match"><span>${esc(m.ended)}${m.taps ? ` · ${m.taps} 📱` : ""}</span><button class="edit" data-edit="${m.id}">${val}</button></div>`;
+      return `<div class="match"><span>${esc(m.ended)}${m.screen ? " · 📺" : m.taps ? ` · ${m.taps} 📱` : ""}${m.ammo ? ` · ${m.ammo} ${esc(u.ammo)}` : ""}</span><button class="edit" data-edit="${m.id}">${val}</button></div>`;
     }).join("");
     $("matches").classList.remove("hidden");
   } else $("matches").classList.add("hidden");

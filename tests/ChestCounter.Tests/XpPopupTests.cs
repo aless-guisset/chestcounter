@@ -118,4 +118,24 @@ public class XpPopupTests
         var (x0, y0, w, h) = XpPopup.GameArea(new ScreenOcr.Frame(px, 100, 100));
         Assert.Equal((0, 25, 100, 50), (x0, y0, w, h));
     }
+
+    [Fact]
+    public void Zone_BlackOrTinyFrame_DoesNotThrow()
+    {
+        // Écran de chargement tout noir : pas d'image du jeu trouvée, on lit quand même sans planter.
+        var black = new ScreenOcr.Frame(new byte[640 * 360 * 4], 640, 360);
+        var z = XpPopup.Zone(black, 3, null);
+        Assert.True(z.Width > 0 && z.Height > 0);
+        var lit = new byte[640 * 360 * 4];
+        for (var x = 0; x < 640; x++) lit[(359 * 640 + x) * 4 + 1] = 200; // seule la dernière ligne est claire
+        XpPopup.Zone(new ScreenOcr.Frame(lit, 640, 360), 4, null);
+    }
+
+    [Theory]
+    [InlineData(new[] { "PLAY", "SHOP", "LOCKER", "PASSES", "QUESTS" }, true)]
+    [InlineData(new[] { "JOUER", "BOUTIQUE", "CASIER", "QUÊTES" }, true)]
+    [InlineData(new[] { "LOCKER" }, false)]                // un seul mot : pas assez sûr
+    [InlineData(new[] { "+600 XP", "CHEST", "0:27" }, false)]
+    public void IsLobby_FromTopMenu(string[] words, bool lobby) =>
+        Assert.Equal(lobby, XpPopup.IsLobby(words.Select(w => new ScreenOcr.Line(w, 10, 5, 5, 3))));
 }

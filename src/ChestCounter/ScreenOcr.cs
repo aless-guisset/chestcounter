@@ -128,6 +128,13 @@ public static class ScreenOcr
         return 0;
     }
 
+    public static string Title(IntPtr hwnd)
+    {
+        var sb = new StringBuilder(512);
+        GetWindowText(hwnd, sb, sb.Capacity);
+        return sb.ToString();
+    }
+
     private static IntPtr _lastWindow;
     private static bool _firstSaved;
 

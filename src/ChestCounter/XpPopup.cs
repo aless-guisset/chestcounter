@@ -50,6 +50,27 @@ public static class XpPopup
         return "other";
     }
 
+    private static readonly string[] LobbyWords = { "PLAY", "SHOP", "LOCKER", "PASSES", "QUESTS", "COMPETE", "CAREER",
+        "JOUER", "BOUTIQUE", "CASIER", "QUÊTES", "QUETES", "COMPÉTITION", "CARRIÈRE" };
+
+    /// <summary>Le menu du haut du lobby (au moins 3 de ses mots) : on n'est pas en partie.</summary>
+    public static bool IsLobby(IEnumerable<ScreenOcr.Line> lines)
+    {
+        var words = lines.SelectMany(l => l.Text.ToUpperInvariant().Split(' ', StringSplitOptions.RemoveEmptyEntries)).ToHashSet();
+        return LobbyWords.Count(words.Contains) >= 3;
+    }
+
+    /// <summary>Le haut de l'image du jeu (menu du lobby), sans agrandir.</summary>
+    public static ScreenOcr.Frame Top(ScreenOcr.Frame f)
+    {
+        var (gx, gy, gw, gh) = GameArea(f);
+        if (gw < f.Width / 3 || gh < f.Height / 3) (gx, gy, gw, gh) = (0, 0, f.Width, f.Height);
+        var h = Math.Max(2, Math.Min(gh / 8, f.Height - gy));
+        var o = new byte[gw * h * 4];
+        for (var y = 0; y < h; y++) Buffer.BlockCopy(f.Bgra, ((gy + y) * f.Width + gx) * 4, o, y * gw * 4, gw * 4);
+        return new ScreenOcr.Frame(o, gw, h);
+    }
+
     /// <summary>Étiquette seule (sans « +N XP » lu) qui dit quand même le type : coffre ou munitions.</summary>
     public static bool IsUsefulLabel(string text) => Kind(text) is "chest" or "rare-chest" or "ammo";
 
@@ -141,8 +162,10 @@ public static class XpPopup
     public static ScreenOcr.Frame Zone(ScreenOcr.Frame f, int scale = 4, int? threshold = 160)
     {
         var (gx, gy, gw, gh) = GameArea(f);
+        if (gw < f.Width / 3 || gh < f.Height / 3) (gx, gy, gw, gh) = (0, 0, f.Width, f.Height); // écran noir : toute la fenêtre
         int x0 = gx + (int)(gw * ZoneX0), x1 = gx + (int)(gw * ZoneX1), y0 = gy + (int)(gh * ZoneY0), y1 = gy + (int)(gh * ZoneY1);
-        int w = Math.Max(2, x1 - x0), h = Math.Max(2, y1 - y0);
+        int w = Math.Max(2, Math.Min(x1, f.Width) - x0), h = Math.Max(2, Math.Min(y1, f.Height) - y0);
+        if (x0 + w > f.Width || y0 + h > f.Height) return new ScreenOcr.Frame(new byte[2 * 2 * 4], 2, 2);
         var lum = new float[w * h];
         for (var y = 0; y < h; y++)
             for (var x = 0; x < w; x++)

@@ -16,7 +16,8 @@ public sealed record BarView(string Total, BarState State, string Badge, IReadOn
 /// Console : la dernière partie vue (fin détectée par l'XP), si elle attend la réponse du joueur, les appuis « +1 coffre »
 /// de la partie en cours, et si la session contient des parties estimées (sans réponse).
 /// </summary>
-public sealed record ConsolePlay(int? LastValue, bool LastEstimated, DateTime? LastEndedUtc, bool LastNeedsAnswer, int CurrentTaps, bool SessionEstimated);
+public sealed record ConsolePlay(int? LastValue, bool LastEstimated, DateTime? LastEndedUtc, bool LastNeedsAnswer, int CurrentTaps, bool SessionEstimated,
+    string? CurrentDetail = null, bool InMatch = false);
 
 /// <summary>Construit la barre des coffres depuis les données PC (replays) ou console (compte Epic).</summary>
 public static class BarModel
@@ -73,9 +74,10 @@ public static class BarModel
     {
         static string Val(int? n, bool est) => n == null ? "—" : (est ? "≈ " : "") + L.N(n.Value);
         var lines = new List<BarLine>();
-        if (play is { CurrentTaps: > 0 })
+        if (play is { CurrentTaps: > 0 } || play is { InMatch: true })
         {
-            lines.Add(new(L.T("Partie en cours", "Current match", "Partida actual"), L.N(play.CurrentTaps), L.T("comptés au téléphone", "counted on the phone", "contados en el teléfono")));
+            lines.Add(new(L.T("Partie en cours", "Current match", "Partida actual"), L.N(play.CurrentTaps),
+                play.CurrentDetail ?? L.T("comptés au téléphone", "counted on the phone", "contados en el teléfono")));
         }
         else if (play is { LastValue: int lastValue, LastEndedUtc: DateTime ended })
         {
@@ -91,6 +93,8 @@ public static class BarModel
         var (chances, empty) = Chances(week, weekChests, seasonChests, obtained, approx: weekEstimated);
         var estimated = totalEstimated || (today != null && todayEstimated) || weekEstimated;
         var totalText = total == null ? "–" : Val(total, totalEstimated);
+        if (play is { InMatch: true })
+            return new BarView(totalText, BarState.Live, L.T("● EN DIRECT (écran)", "● LIVE (screen)", "● EN DIRECTO (pantalla)"), lines, chances, empty);
         return estimated
             ? new BarView(totalText, BarState.Estimate, L.T("≈ ESTIMATION", "≈ ESTIMATE", "≈ ESTIMACIÓN"), lines, chances, empty)
             : new BarView(totalText, BarState.EstimateConfirmed, L.T("✓ CONFIRMÉ (Epic)", "✓ CONFIRMED (Epic)", "✓ CONFIRMADO (Epic)"), lines, chances, empty);

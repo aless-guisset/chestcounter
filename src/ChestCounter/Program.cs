@@ -486,6 +486,11 @@ if (config.PhoneEnabled && interactive)
 {
     StartPhone();
 }
+// Lecture de l'écran (coffres en direct) : fil à part, suit le réglage « Lecture de l'écran ».
+if (interactive)
+{
+    LiveScreen.Start(() => LiveScreen.Target(config.ScreenSource, config.IsConsole), store.Folder);
+}
 
 // ---- Main screen ---------------------------------------------------------------------------
 // One screen, redrawn in place: tabs (home / settings / help), a menu driven by the arrow keys, and an activity
@@ -689,6 +694,10 @@ while (!quit)
         CheckAutoClose();
     }
 
+    if (!config.IsConsole && LiveScreen.DrainForPc(tracker.IsLive))
+    {
+        UpdateOverlay(store, config, data, tracker.LiveMatch, tracker.IsLive);
+    }
     if (config.IsConsole && Ps5Mode.Initialized)
     {
         Ps5Mode.Tick(config.OpenReportOnStart && !auto);
@@ -823,6 +832,14 @@ List<(string Label, Action Run, string? About)> Items()
                         "Beyond 1,000 Epic stops counting: your number replaces the estimate (also possible from the phone).",
                         "Más allá de 1000 Epic deja de contar: tu cifra sustituye a la estimación (también desde el teléfono).")));
             }
+            list.Add(Item(L.T("Journal de partie (aujourd'hui)", "Match log (today)", "Diario de partida (hoy)"), () =>
+            {
+                var j = LiveScreen.JournalPath(DateTime.Today);
+                if (File.Exists(j)) Open(j);
+                else Console.WriteLine(L.T("  Rien aujourd'hui : le journal se remplit quand l'écran est lu (Réglages → Lecture de l'écran).",
+                    "  Nothing today: the log fills up when the screen is read (Settings → Screen reading).",
+                    "  Nada hoy: el diario se llena cuando se lee la pantalla (Ajustes → Lectura de pantalla)."));
+            }, L.T("Chaque coffre, boîte de munitions, élimination… lu à l'écran, avec l'heure.", "Every chest, ammo box, elimination… read on screen, with the time.", "Cada cofre, caja de munición, eliminación… leído en pantalla, con la hora.")));
             list.Add(Item(L.T("Téléphone (QR code)", "Phone (QR code)", "Teléfono (código QR)"), () =>
             {
                 if (!PhoneServer.IsRunning && !StartPhone())
@@ -939,6 +956,14 @@ List<(string Label, Action Run, string? About)> Items()
                     L.T("Petite fenêtre toujours au premier plan qui affiche tes coffres en jeu. Désactivé : aucune fenêtre ni raccourci, tout reste dans le rapport.",
                         "Small always-on-top window that shows your chests in game. Off: no window and no shortcut, everything stays in the report.",
                         "Pequeña ventana siempre visible que muestra tus cofres en el juego. Desactivado: ni ventana ni atajos, todo queda en el informe.")));
+                list.Add(Item($"{L.T("Lecture de l'écran", "Screen reading", "Lectura de pantalla")} : {LiveScreen.Describe(config.ScreenSource, config.IsConsole)}"
+                    + (LiveScreen.Active ? L.T(" (lue en ce moment)", " (reading now)", " (leyendo ahora)") : ""), () =>
+                {
+                    config.ScreenSource = LiveScreen.Next(config.ScreenSource);
+                    try { store.SaveConfig(config); } catch { }
+                }, L.T("Compte les coffres en direct en lisant le « +XP » affiché (« +600 XP · CHEST »). PC : la fenêtre de Fortnite. PS5 : Chiaki (Remote Play sur le PC) ou OBS (carte de capture), même cachés derrière d'autres fenêtres mais pas réduits. Ne touche pas au jeu. Entrée pour changer.",
+                    "Counts chests live by reading the \"+XP\" shown (\"+600 XP · CHEST\"). PC: the Fortnite window. PS5: Chiaki (Remote Play on the PC) or OBS (capture card), even behind other windows but not minimized. Does not touch the game. Enter to switch.",
+                    "Cuenta los cofres en directo leyendo el «+XP» mostrado («+600 XP · CHEST»). PC: la ventana de Fortnite. PS5: Chiaki (Remote Play en el PC) u OBS (capturadora), aunque estén detrás de otras ventanas pero no minimizadas. No toca el juego. Intro para cambiar.")));
                 if (config.ShowOverlay)
                 {
                     string StyleName(string s) => s == "classic"
@@ -1601,6 +1626,8 @@ static BarView PcBar(Store store, Config config, TrackerData shown, MatchRecord?
     {
         obtained.AutoTick(m.TreasureFinds, m.MatchStartUtc ?? m.AnalyzedAtUtc);
     }
+    // Replay encore illisible : les coffres lus à l'écran (« +600 XP · CHEST ») font le direct, le replay confirme à la fin.
+    if (inProgress && live == null && LiveScreen.PcRead) live = new MatchRecord { ChestsOpened = LiveScreen.PcChests };
     return BarModel.ForPc(shown, live, inProgress, Sessions.PcSessionStart(gameStart, config.LastGameStartUtc), gameStart != null, obtained, DateTime.UtcNow);
 }
 

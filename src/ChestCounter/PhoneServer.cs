@@ -106,6 +106,9 @@ public static class PhoneServer
                 endedAt = L.T("finie à", "ended at", "terminó a las"),
                 notMatch = L.T("pas une partie", "not a match", "no es partida"),
                 chancesTitle = L.T("Coffres · chances", "Chests · chances", "Cofres · probabilidades"),
+                screen = L.T("lu à l'écran", "read on screen", "leído en pantalla"),
+                screenHelp = L.T("Coffres comptés tout seuls en lisant l'écran (Chiaki / OBS).", "Chests counted automatically by reading the screen (Chiaki / OBS).", "Cofres contados solos leyendo la pantalla (Chiaki / OBS)."),
+                ammo = L.T("munitions", "ammo", "munición"),
                 offline = L.T("PC injoignable (même Wi-Fi ? compteur ouvert ?)", "PC unreachable (same Wi-Fi? counter open?)", "PC inaccesible (¿mismo Wi-Fi? ¿contador abierto?)"),
             },
         });

@@ -123,6 +123,23 @@ Sur PS5 (au-delà de 1 000 coffres) : le compteur voit la fin de chaque partie
 
 
 =========================================================
+Coffres en direct : la lecture de l'écran
+=========================================================
+
+Le compteur lit le "+XP" que Fortnite affiche quand tu ouvres un coffre
+("+600 XP · CHEST", "+900 XP · RARE CHEST") : chaque coffre compte dans la
+seconde, les boîtes de munitions à part. Il ne touche pas au jeu (comme un
+logiciel de stream qui regarde l'image).
+  - PC : rien à faire, il lit la fenêtre de Fortnite.
+  - PS5 : ouvre Chiaki (Remote Play sur le PC, gratuit) ou OBS (carte de capture)
+    et laisse sa fenêtre ouverte, en grand si possible. Elle peut être derrière
+    d'autres fenêtres, mais pas réduite dans la barre des tâches.
+  - Réglages -> "Lecture de l'écran" : auto, Fortnite, Chiaki, OBS ou désactivée.
+La barre affiche alors "● EN DIRECT" avec le nombre de coffres de la partie.
+Menu "Journal de partie (aujourd'hui)" : chaque coffre, boîte, élimination, avec l'heure.
+
+
+=========================================================
 Le téléphone (PC ou PS5)
 =========================================================
 

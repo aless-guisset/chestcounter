@@ -89,4 +89,24 @@ public class ConsoleMatchesTests
         ConsoleMatches.AddEnded(list, T.AddHours(1), 0, null);
         Assert.Equal(ConsoleMatches.Keep, list.Count);
     }
+
+    [Fact]
+    public void Value_ScreenReadingBeatsTapsAndAverage()
+    {
+        Assert.Equal((8, false), ConsoleMatches.Value(new PlayedMatch { Seen = 8, Taps = 3 }, 9.4));
+        Assert.Equal((0, false), ConsoleMatches.Value(new PlayedMatch { Seen = 0 }, 9.4));   // lu à l'écran : vraiment 0
+        Assert.Equal((5, false), ConsoleMatches.Value(new PlayedMatch { Seen = 8, Chests = 5 }, 9.4)); // la réponse du joueur gagne
+    }
+
+    [Fact]
+    public void AddEnded_KeepsScreenCounts()
+    {
+        var list = new List<PlayedMatch>();
+        var m = ConsoleMatches.AddEnded(list, T, taps: 0, epicDelta: null, seen: 8, ammo: 2);
+        Assert.Equal(8, m.Seen);
+        Assert.Equal(2, m.Ammo);
+        Assert.Equal("screen", m.Source);
+        var none = ConsoleMatches.AddEnded(list, T, taps: 0, epicDelta: null);
+        Assert.Null(none.Seen);
+    }
 }

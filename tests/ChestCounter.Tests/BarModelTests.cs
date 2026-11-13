@@ -124,6 +124,16 @@ public class BarModelTests : IDisposable
     }
 
     [Fact]
+    public void Build_Ps5LiveFromScreen()
+    {
+        var play = new ConsolePlay(7, false, Week2.AddMinutes(-30), false, 5, false, "lus à l'écran · 2 munitions", InMatch: true);
+        var v = BarModel.ForPs5(1430, true, 52, true, 20, true, 40, true, 1430, new ObtainedStore(_dir), Week2, play);
+        Assert.Equal(BarState.Live, v.State);
+        Assert.Equal("● EN DIRECT (écran)", v.Badge);
+        Assert.Equal(("Partie en cours", "5", "lus à l'écran · 2 munitions"), (v.Summary[0].Label, v.Summary[0].Value, v.Summary[0].Detail));
+    }
+
+    [Fact]
     public void Build_AllObtained()
     {
         var s = new ObtainedStore(_dir);

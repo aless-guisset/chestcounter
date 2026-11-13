@@ -79,6 +79,10 @@ public static class Ps5Mode
         public List<PlayedMatch> Played { get; set; } = new();
         /// <summary>Appuis « +1 coffre » de la partie en cours (téléphone), rattachés à la prochaine fin de partie.</summary>
         public int Taps { get; set; }
+        /// <summary>Partie en cours lue à l'écran (Chiaki…) : coffres et boîtes de munitions vus, et si l'écran a été lu.</summary>
+        public int SeenChests { get; set; }
+        public int SeenAmmo { get; set; }
+        public bool ScreenRead { get; set; }
     }
 
     public sealed class Calibration
@@ -635,6 +639,7 @@ public static class Ps5Mode
     public static bool Tick(bool openReportOnFirstSync)
     {
         if (!HasAuth) return false;
+        if (_polling == null && ScreenTick()) return true;
         if (_polling == null && !Commands.IsEmpty)
         {
             while (Commands.TryDequeue(out var cmd))
@@ -1084,10 +1089,12 @@ public static class Ps5Mode
             if (ConsoleMatches.Ended(_xpKey, xpKey))
             {
                 int? epicDelta = prev < Cap && c.Value <= Cap ? c.Value - prev : null; // sous le plafond : chiffre exact
-                var m = ConsoleMatches.AddEnded(_data.Played, DateTime.UtcNow, _data.Taps, epicDelta);
-                _data.Taps = 0;
+                var m = ConsoleMatches.AddEnded(_data.Played, DateTime.UtcNow, _data.Taps, epicDelta,
+                    _data.ScreenRead ? _data.SeenChests : null, _data.SeenAmmo);
+                (_data.Taps, _data.SeenChests, _data.SeenAmmo, _data.ScreenRead) = (0, 0, 0, false);
                 Add(L.T($"Partie finie à {m.EndedUtc.ToLocalTime():HH:mm}", $"Match ended at {m.EndedUtc.ToLocalTime():HH:mm}", $"Partida terminada a las {m.EndedUtc.ToLocalTime():HH:mm}")
-                    + (m.Chests is int ec ? $" : {L.Count(ec, "coffre", "chest", "cofre")}" : m.Taps > 0 ? $" : {L.Count(m.Taps, "coffre", "chest", "cofre")} ({L.T("téléphone", "phone", "teléfono")})"
+                    + (m.Chests is int ec ? $" : {L.Count(ec, "coffre", "chest", "cofre")}"
+                    : m.Seen is int sc ? $" : {L.Count(sc, "coffre", "chest", "cofre")} ({L.T("lus à l'écran", "read on screen", "leídos en pantalla")})" : m.Taps > 0 ? $" : {L.Count(m.Taps, "coffre", "chest", "cofre")} ({L.T("téléphone", "phone", "teléfono")})"
                     : L.T(" : combien de coffres ? (téléphone ou menu « Dernière partie »)", ": how many chests? (phone or \"Last match\" menu)", ": ¿cuántos cofres? (teléfono o menú «Última partida»)")), ConsoleColor.Cyan);
             }
             if (xpKey != null) _xpKey = xpKey;
@@ -1164,10 +1171,14 @@ public static class Ps5Mode
         }
         var last = _data.Played.LastOrDefault();
         ConsolePlay? play = null;
-        if (last != null || _data.Taps > 0)
+        var screen = ScreenInMatch || _data.SeenChests > 0;
+        if (last != null || _data.Taps > 0 || screen)
         {
             var (lv, le) = last != null ? ConsoleMatches.Value(last, avg) : (0, false);
-            play = new ConsolePlay(last != null ? lv : null, le, last?.EndedUtc, last != null && NeedsAnswer(last), _data.Taps, sessionEst);
+            play = new ConsolePlay(last != null ? lv : null, le, last?.EndedUtc, last != null && NeedsAnswer(last),
+                screen ? _data.SeenChests : _data.Taps, sessionEst,
+                screen ? L.T("lus à l'écran", "read on screen", "leídos en pantalla") + (_data.SeenAmmo > 0 ? L.T($" · {_data.SeenAmmo} munitions", $" · {_data.SeenAmmo} ammo", $" · {_data.SeenAmmo} munición") : "") : null,
+                ScreenInMatch);
         }
 
         var weekStartLocal = TreasureOdds.CurrentWeek(DateTime.UtcNow).StartUtc.ToLocalTime().Date;
@@ -1195,8 +1206,43 @@ public static class Ps5Mode
             utc => _data.MatchesPerUtcDay.ContainsKey(utc.Date.ToString("yyyy-MM-dd")));
     }
 
-    /// <summary>Au-delà du plafond, une partie récente sans réponse ni appui attend le nombre de coffres.</summary>
-    private static bool NeedsAnswer(PlayedMatch m) => Capped && m.Chests == null && m.Taps == 0 && DateTime.UtcNow - m.EndedUtc < TimeSpan.FromHours(3);
+    /// <summary>Au-delà du plafond, une partie récente sans réponse, ni lecture d'écran, ni appui attend le nombre de coffres.</summary>
+    private static bool NeedsAnswer(PlayedMatch m) => Capped && m.Chests == null && m.Seen == null && m.Taps == 0 && DateTime.UtcNow - m.EndedUtc < TimeSpan.FromHours(3);
+
+    private static bool? _lastLobby;
+
+    /// <summary>En partie d'après l'écran (Chiaki lu, menu du lobby absent).</summary>
+    private static bool ScreenInMatch => LiveScreen.Active && LiveScreen.InLobby == false;
+
+    /// <summary>Coffres et munitions lus à l'écran → partie en cours. Retour au lobby → relevé Epic tout de suite (fin de partie).</summary>
+    private static bool ScreenTick()
+    {
+        var changed = false;
+        if (ScreenInMatch && !_data.ScreenRead)
+        {
+            _data.ScreenRead = true;
+            changed = true;
+        }
+        while (LiveScreen.Events.TryDequeue(out var e))
+        {
+            if (LiveScreen.IsChest(e.Kind)) _data.SeenChests++;
+            else if (e.Kind == "ammo") _data.SeenAmmo++;
+            else continue;
+            _data.ScreenRead = true;
+            changed = true;
+        }
+        var lobby = LiveScreen.Active ? LiveScreen.InLobby : null;
+        if (lobby != _lastLobby)
+        {
+            if (lobby == true && _lastLobby == false) RefreshNow(); // l'XP de fin de partie est déjà là
+            _lastLobby = lobby;
+            changed = true;
+        }
+        if (!changed) return false;
+        Save(DataPath, _data);
+        UpdateOverlay();
+        return true;
+    }
 
     public static IReadOnlyList<PlayedMatch> Played => _data.Played;
     public static int CurrentTaps => _data.Taps;
@@ -1255,11 +1301,14 @@ public static class Ps5Mode
         {
             capped = Capped,
             taps = _data.Taps,
+            screen = ScreenInMatch || _data.SeenChests > 0,
+            seen = _data.SeenChests,
+            ammo = _data.SeenAmmo,
             matches = _data.Played.AsEnumerable().Reverse().Take(15).Select(m =>
             {
                 var (v, est) = ConsoleMatches.Value(m, avg);
                 var local = m.EndedUtc.ToLocalTime();
-                return new { id = m.Id, ended = local.ToString(local.Date == DateTime.Now.Date ? "HH:mm" : "dd'/'MM HH:mm"), value = v, estimated = est, taps = m.Taps, needs = NeedsAnswer(m) };
+                return new { id = m.Id, ended = local.ToString(local.Date == DateTime.Now.Date ? "HH:mm" : "dd'/'MM HH:mm"), value = v, estimated = est, taps = m.Taps, screen = m.Seen != null, ammo = m.Ammo, needs = NeedsAnswer(m) };
             }),
         };
     }

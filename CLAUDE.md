@@ -61,7 +61,13 @@ de la connexion Epic). Ne jamais laisser de faux chiffres (étalonnage bidon) vi
   par `Ps5Mode.Tick` (jamais pendant un relevé). Page : `Assets/phone.html`.
 - `ScreenOcr` : capture d'une fenêtre (BitBlt écran) + OCR Windows (`Windows.Media.Ocr`, d'où la cible
   `net10.0-windows10.0.19041.0`). `--ocr-test [min] [titre]` note le texte lu (coffres, XP) dans `ocr\ocr.txt` + PNG.
-  Étape suivante : régler la détection d'après ces relevés (PC : Fortnite ; console : fenêtre OBS / stream).
+- **Ça marche (13/11, PS5 via Chiaki en grand)** : Fortnite affiche « +600 XP » et dessous l'étiquette (« CHEST »,
+  « RARE CHEST », « AMMO BOX », « RARE AMMO BOX », « ELIMINATION »…) à x≈60–75 %, y≈28–34 % de l'image du jeu.
+  `XpPopup` : zone sans bandes noires, agrandie ×3 en niveaux de gris inversés, `Tracker` (un gain vu sur plusieurs
+  images = 1), `Kind` tolérant (« CREST », « AMMO gox »), lobby = ≥ 3 mots du menu du haut. `LiveScreen` : fil
+  continu (réglage `ScreenSource`, auto → Fortnite sur PC / Chiaki sur console), journal `journal\AAAA-MM-JJ.txt`.
+  Console : coffres lus → `PlayedMatch.Seen` à la fin de partie (XP) ; PC : `LiveScreen.PcChests` → direct de la barre.
+  `--ocr-file <png>` : relit des captures (réglage sans jouer).
 
 Outils de diagnostic : `--ps5-quests` (attributs bruts des quêtes), `--ps5-stats` (parties par jour UTC) et
 `--ps5-xp [minutes]` (relève le profil toutes les 30 s et note ce qui change, dans `ps5\xp.txt`), `--ocr-test`.
