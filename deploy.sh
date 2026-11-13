@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Compile ChestCounter+ et l'installe dans le dossier privé Bureau\ChestCounterPlus-Prive (ferme l'app, relance l'attente
-# de Fortnite) avec les outils de test. La version publique : ./package.sh.
+# de Fortnite) avec les outils de test, et met à jour la version publique Bureau\ChestCounterPlus.
 set -euo pipefail
 cd "$(dirname "$0")"
 ~/.dotnet/dotnet publish src/ChestCounter/ChestCounter.csproj -c Release -r win-x64 --self-contained true \
@@ -40,3 +40,11 @@ BAT
 /mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe -NoProfile -Command \
   "Start-Process -FilePath '$DEST\ChestCounterPlus.exe' -ArgumentList '--standby','--data','\"C:\Users\adm_loc\AppData\Roaming\ChestCounterPlus\"'" || true
 echo "Installé dans $DEST (attente de Fortnite relancée)"
+# Même version dans le dossier public (sans les outils de test).
+PUB=/mnt/c/Users/adm_loc/Desktop/ChestCounterPlus
+mkdir -p "$PUB"
+cp dist/ChestCounterPlus.exe "$PUB/"
+crlf < packaging/LISEZMOI.txt > "$PUB/LISEZMOI.txt"
+crlf < packaging/Desinstaller-ChestCounter-LED-N.bat > "$PUB/Desinstaller ChestCounter LED-N.bat"
+printf '@echo off\nstart "" "%%~dp0ChestCounterPlus.exe"\n' | crlf > "$PUB/Lancer ChestCounter+.bat"
+echo "Version publique à jour : Bureau\\ChestCounterPlus"
