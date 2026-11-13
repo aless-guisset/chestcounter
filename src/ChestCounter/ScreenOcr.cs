@@ -122,36 +122,38 @@ public static class ScreenOcr
             }
             return IntPtr.Zero;
         }
-        // D'abord le programme lui-même (« chiaki » → chiaki.exe), pour ne pas prendre un onglet du navigateur qui en parle.
+        // Fenêtres du programme lui-même (« chiaki » → chiaki-ng.exe) ou dont le titre contient le texte ; la plus grande
+        // (Chiaki ouvre une petite fenêtre de menu et une grande pour le jeu).
+        var pids = new HashSet<uint>();
         foreach (var p in Process.GetProcesses())
         {
             using (p)
             {
-                try
-                {
-                    if (p.ProcessName.Contains(title, StringComparison.OrdinalIgnoreCase) && p.MainWindowHandle != IntPtr.Zero && IsWindowVisible(p.MainWindowHandle))
-                        return p.MainWindowHandle;
-                }
-                catch { }
+                try { if (p.ProcessName.Contains(title, StringComparison.OrdinalIgnoreCase)) pids.Add((uint)p.Id); } catch { }
             }
         }
-        var found = IntPtr.Zero;
+        var best = IntPtr.Zero;
+        long bestArea = 0;
         EnumWindows((h, _) =>
         {
-            if (!IsWindowVisible(h)) return true;
+            if (!IsWindowVisible(h) || IsIconic(h)) return true;
+            GetWindowThreadProcessId(h, out var pid);
             var sb = new StringBuilder(512);
             GetWindowText(h, sb, sb.Capacity);
-            if (sb.ToString().Contains(title, StringComparison.OrdinalIgnoreCase))
-            {
-                found = h;
-                return false;
-            }
+            if (!pids.Contains(pid) && !sb.ToString().Contains(title, StringComparison.OrdinalIgnoreCase)) return true;
+            if (!GetWindowRect(h, out var r)) return true;
+            long area = (long)(r.Right - r.Left) * (r.Bottom - r.Top);
+            if (pids.Contains(pid)) area *= 4; // le programme passe avant un onglet du navigateur qui en parle
+            if (area > bestArea) (best, bestArea) = (h, area);
             return true;
         }, IntPtr.Zero);
-        return found;
+        return best;
     }
 
-    /// <summary>Copie de l'écran à l'endroit de la fenêtre (marche en plein écran fenêtré ; la fenêtre doit être visible).</summary>
+    /// <summary>
+    /// Image de la fenêtre. D'abord PrintWindow (PW_RENDERFULLCONTENT) : le contenu de la fenêtre même si une autre est
+    /// devant (Chiaki, OBS, navigateur). Si l'image est noire (certains jeux en DirectX), copie de l'écran à cet endroit.
+    /// </summary>
     public static Frame? Capture(IntPtr hwnd)
     {
         if (!GetWindowRect(hwnd, out var r) || IsIconic(hwnd)) return null;
@@ -163,13 +165,11 @@ public static class ScreenOcr
         var old = SelectObject(mem, bmp);
         try
         {
+            var printed = PrintWindow(hwnd, mem, 2);
+            if (printed && Read(mem, bmp, old, w, h) is { } f && !IsBlack(f)) return f;
+            old = SelectObject(mem, bmp);
             if (!BitBlt(mem, 0, 0, w, h, screen, r.Left, r.Top, 0x00CC0020 | 0x40000000)) return null;
-            SelectObject(mem, old);
-            var info = new BITMAPINFOHEADER { biSize = 40, biWidth = w, biHeight = -h, biPlanes = 1, biBitCount = 32 };
-            var pixels = new byte[w * h * 4];
-            if (GetDIBits(mem, bmp, 0, (uint)h, pixels, ref info, 0) == 0) return null;
-            for (var i = 3; i < pixels.Length; i += 4) pixels[i] = 255;
-            return new Frame(pixels, w, h);
+            return Read(mem, bmp, old, w, h);
         }
         finally
         {
@@ -177,6 +177,25 @@ public static class ScreenOcr
             DeleteDC(mem);
             ReleaseDC(IntPtr.Zero, screen);
         }
+    }
+
+    private static bool IsBlack(Frame f)
+    {
+        for (var i = 0; i < f.Bgra.Length; i += 4 * 997)
+        {
+            if (f.Bgra[i] > 12 || f.Bgra[i + 1] > 12 || f.Bgra[i + 2] > 12) return false;
+        }
+        return true;
+    }
+
+    private static Frame? Read(IntPtr mem, IntPtr bmp, IntPtr old, int w, int h)
+    {
+        SelectObject(mem, old);
+        var info = new BITMAPINFOHEADER { biSize = 40, biWidth = w, biHeight = -h, biPlanes = 1, biBitCount = 32 };
+        var pixels = new byte[w * h * 4];
+        if (GetDIBits(mem, bmp, 0, (uint)h, pixels, ref info, 0) == 0) return null;
+        for (var i = 3; i < pixels.Length; i += 4) pixels[i] = 255;
+        return new Frame(pixels, w, h);
     }
 
     public static List<Line> Recognize(OcrEngine engine, Frame f)
@@ -230,9 +249,11 @@ public static class ScreenOcr
     [DllImport("user32.dll")] private static extern bool EnumWindows(EnumWindowsProc cb, IntPtr lParam);
     [DllImport("user32.dll")] private static extern bool IsWindowVisible(IntPtr hwnd);
     [DllImport("user32.dll")] private static extern bool IsIconic(IntPtr hwnd);
+    [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint pid);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetWindowText(IntPtr hwnd, StringBuilder text, int max);
     [DllImport("user32.dll")] private static extern bool GetWindowRect(IntPtr hwnd, out RECT rect);
     [DllImport("user32.dll")] private static extern IntPtr GetDC(IntPtr hwnd);
+    [DllImport("user32.dll")] private static extern bool PrintWindow(IntPtr hwnd, IntPtr dc, uint flags);
     [DllImport("user32.dll")] private static extern int ReleaseDC(IntPtr hwnd, IntPtr dc);
     [DllImport("user32.dll")] private static extern bool SetProcessDpiAwarenessContext(IntPtr value);
     [DllImport("gdi32.dll")] private static extern IntPtr CreateCompatibleDC(IntPtr dc);
