@@ -150,7 +150,8 @@ public static class LiveScreen
                     if (lobby && XpPopup.ModeOf(ScreenOcr.Recognize(engine, XpPopup.Left(frame))) is { } mode) LobbyMode = mode;
                     if (InLobby == true && !lobby) MatchMode = LobbyMode; // on quitte le lobby : le mode de la partie
                     if (InLobby != null && lobby != InLobby)
-                        Journal(lobby ? "── retour au lobby" : $"── partie commencée ({ModeName(MatchMode)}{(Allowed(ModesSetting, MatchMode) ? "" : L.T(", pas comptée", ", not counted", ", no contada"))})");
+                        Journal(lobby ? "── " + L.T("retour au lobby", "back to the lobby", "vuelta al lobby")
+                            : $"── {L.T("partie commencée", "match started", "partida empezada")} ({ModeName(MatchMode)}{(Allowed(ModesSetting, MatchMode) ? "" : L.T(", pas comptée", ", not counted", ", no contada"))})");
                     InLobby = lobby;
                 }
                 if (InLobby != true && Allowed(ModesSetting, MatchMode))

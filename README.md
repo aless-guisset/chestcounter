@@ -1,180 +1,302 @@
 <div align="center">
 
-**English** · [Français](README.fr.md) · [Español](README.es.md)
-
 <img src="docs/icon.png" alt="" width="88">
 
-# Fortnite Chest Counter
+# ChestCounter+
 
-[![version](https://img.shields.io/github/v/release/LED-N/Fortnite-ChestCounter?style=flat-square&label=version&color=e8b04b)](../../releases/latest) [![downloads](https://img.shields.io/github/downloads/LED-N/Fortnite-ChestCounter/total?style=flat-square&label=downloads&color=e8b04b)](../../releases) ![Windows 10 | 11](https://img.shields.io/badge/Windows-10%20%7C%2011-3a7bd5?style=flat-square) [![license](https://img.shields.io/github/license/LED-N/Fortnite-ChestCounter?style=flat-square&label=license&color=555)](LICENSE)
+**A Fortnite chest counter for PC _and_ console: live chest count, a drop-down overlay, treasure odds, and a phone companion.**
 
-**Counts every chest you open in Fortnite, match after match, with an overlay that blends into the game.**
+![Windows 10 | 11](https://img.shields.io/badge/Windows-10%20%7C%2011-3a7bd5?style=flat-square) ![.NET 10](https://img.shields.io/badge/.NET-10-512bd4?style=flat-square) ![PC + PS5](https://img.shields.io/badge/platform-PC%20%2B%20PS5-e8b04b?style=flat-square) [![license](https://img.shields.io/badge/license-MIT-555?style=flat-square)](LICENSE)
 
-<img src="docs/overlay-en.png" alt="Overlay between two matches" height="150">&nbsp;&nbsp;&nbsp;&nbsp;<img src="docs/overlay-match-en.png" alt="Overlay during a match" height="150">
-
-[**⬇ Download ChestCounter.exe**](../../releases/latest) · Windows 10 / 11 · free · no install
+<img src="docs/plus/bar-summary-live.png" alt="The bar during a match" height="230">&nbsp;&nbsp;<img src="docs/plus/bar-chances.png" alt="Chests · chances tab" height="230">&nbsp;&nbsp;<img src="docs/plus/phone.png" alt="Phone companion" height="230">
 
 </div>
 
 ---
 
-Chest Counter reads the replays Fortnite saves after each match and keeps a running count of the chests you opened, along with the **treasure hunt treasures** you got from your chests. A transparent overlay shows your figures over the game, like the rest of the HUD, and a detailed report keeps your whole history.
+> [!NOTE]
+> **ChestCounter+ is built on [Fortnite Chest Counter by LED-N](https://github.com/LED-N/Fortnite-ChestCounter)** (MIT license, version 1.4.0).
+> All of the PC replay analysis, the report and the original overlay come from LED-N's work. ChestCounter+ adds console
+> support, live counting, the drop-down bar, treasure odds and a phone page on top of it. Thank you LED-N!
+>
+> ChestCounter+ is a separate app (`ChestCounterPlus.exe`, its own data folder): it can live next to LED-N's version
+> and imports its history on first launch. It is **not** affiliated with LED-N or Epic Games.
 
-> It counts the chests **you opened**. It does not show where chests are on the map.
+## Contents
 
-## How it works (and why it is safe)
+- [What it does](#what-it-does)
+- [How it counts](#how-it-counts)
+- [Features](#features)
+  - [The chest bar (overlay)](#the-chest-bar-overlay)
+  - [Live counting by reading the screen](#live-counting-by-reading-the-screen)
+  - [Console mode (PS5, Xbox, Switch)](#console-mode-ps5-xbox-switch)
+  - [Treasure odds](#treasure-odds)
+  - [Phone companion](#phone-companion)
+  - [Match log](#match-log)
+  - [Game modes](#game-modes)
+- [Install](#install)
+- [Keyboard shortcuts](#keyboard-shortcuts)
+- [Settings](#settings)
+- [Is it safe?](#is-it-safe)
+- [Your data](#your-data)
+- [Build from source](#build-from-source)
+- [Limits](#limits)
+- [Credits and license](#credits-and-license)
 
-Fortnite can record a **replay file** of every match on your PC. Chest Counter reads these files once the match is over, and nothing else.
+## What it does
 
-- ✅ **Only reads replay files**: the `.replay` files Fortnite writes to `%LOCALAPPDATA%\FortniteGame\Saved\Demos`. They are opened read-only and never modified.
-- ✅ **No game modification**: nothing in the Fortnite install folder is touched, no file is added or changed.
-- ✅ **No access to the game's memory**: the tool never reads, writes or injects anything into the Fortnite process. It does not interact with the running game at all.
-- ✅ **No data sent**: no login, no access to your Epic account, no telemetry. Its only network access is the check for a new version on GitHub, which can be turned off in the settings.
-- ✅ **Lightweight**: runs at low priority (and in "efficiency mode" on Windows 11), sleeps between matches, and the overlay is only redrawn when a number changes.
+ChestCounter+ keeps count of every chest you open in Fortnite: in the current match, this session, today and since you
+started. A small bar sits over the game like the rest of the HUD, and drops down to show your figures and your chances
+of having found this week's treasures.
 
-> [!IMPORTANT]
-> **Replays must be turned on in Fortnite**: *Settings → Game → Replays → Record Replays: **On***. Without replays, the tool has nothing to read.
+| | PC | Console (PS5, Xbox, Switch) |
+|---|---|---|
+| **Live, during the match** | Reads the `+XP` shown on screen (Fortnite window) | Reads the `+XP` shown on screen (Chiaki or OBS window) |
+| **Confirmed, after the match** | Fortnite replay files (exact) | Epic account: exact up to 1,000 chests, then your answer or an estimate |
+| **Session** | From Fortnite launch to close | From counter start to stop |
+| **Report and history** | ✅ | ✅ |
 
-Because Fortnite only writes the replay's decryption key when the match ends, chests are counted **a few seconds after each match**, not during it. While you play, the overlay shows **● In a match**.
+## How it counts
 
-## Getting started
+```mermaid
+flowchart LR
+    subgraph During the match
+        S["Screen reading<br/>&quot;+600 XP · CHEST&quot;"]
+        P["Phone<br/>+1 chest button"]
+    end
+    subgraph After the match
+        R["PC: replay file<br/>(exact count)"]
+        E["Console: Epic account<br/>(XP changes = match ended)"]
+    end
+    S --> B[(ChestCounter+)]
+    P --> B
+    R --> B
+    E --> B
+    B --> O["Drop-down bar<br/>over the game"]
+    B --> F["Phone page"]
+    B --> H["Report · match log"]
+```
 
-1. Download **[`ChestCounter.exe`](../../releases/latest)**. This single file is all you need.
-2. Turn on replays in Fortnite (see above).
-3. Run `ChestCounter.exe`.
-   > Windows may show *"Windows protected your PC"* because the exe is not signed. Click *More info → Run anyway*.
-4. A short setup (arrow keys + Enter) asks for your **language** (French / English / Spanish), checks your **replays folder**, offers to count the **replays already on your PC**, then asks whether you want the **in-game overlay** and whether the counter should **open automatically with Fortnite**.
+- **During the match**, Fortnite keeps the replay file locked and Epic's servers publish nothing, so the only live
+  source is what the game shows on screen: every chest gives a `+XP` popup with its name under it.
+- **After the match**, the count is confirmed: on PC by the replay file, on console by the Epic account (which also
+  tells the counter that a match just ended).
 
-<p align="center"><img src="docs/setup-en.png" alt="First launch setup" width="760"></p>
+## Features
 
-If you count your existing replays, a progress bar moves while the report opens in your browser and fills in live:
+### The chest bar (overlay)
 
-<p align="center"><img src="docs/progress-en.png" alt="Analysis progress bar" width="760"></p>
+A drop-down bar that stays on top of the game (Fortnite must be in *Windowed fullscreen*). Closed, it only shows your
+total and a status badge; open it with **Ctrl+Shift+E** to see the **Summary** and **Chests · chances** tabs.
 
-5. Keep the counter open while you play. Minimizing it puts it in the **notification area**, next to the clock (chest icon): a click on it opens it again. A few seconds after each match, its chests are added:
+<img src="docs/plus/bar-closed.png" alt="Closed bar" height="40">
 
-<p align="center"><img src="docs/console-en.png" alt="Home screen of the counter" width="820"></p>
+<img src="docs/plus/bar-summary-live.png" alt="Summary during a match" height="210">&nbsp;&nbsp;<img src="docs/plus/bar-confirmed.png" alt="Summary after the match" height="210">
 
-> [!TIP]
-> Fortnite only keeps a limited number of unsaved replays and deletes the oldest ones, and a match played while the counter is closed is not counted. Turn on **Open with Fortnite** (offered during setup, or in the **Settings** tab) so you never have to think about it.
-
-## Using the counter
-
-Everything works with the **arrow keys** and **Enter**, with no key to remember. **← →** switch tabs:
-
-- **Home**: your profile, what the counter is doing (waiting, match in progress…), your total, your session and your last match. The menu opens the report, shows or locks the overlay, switches profile and installs updates. At the bottom, the activity shows each match counted.
-- **Settings**: each setting changes with Enter, and a line at the bottom explains it.
-- **Help**: how it works, the overlay shortcuts, your data folder, and a link to report a problem.
-
-<p align="center"><img src="docs/settings-en.png" alt="Settings tab" width="820"></p>
-
-| Setting | What it does |
+| Badge | Meaning |
 |---|---|
-| Language | French, English or Spanish. |
-| In-game overlay | On or off (no window and no shortcut: everything stays in the report). |
-| Overlay style, size, opacity | HUD or classic, 70 to 175%, 100 to 30% opacity. Applied at once. |
-| Minimize to the notification area | Yes: minimizing the counter puts it next to the clock instead of the taskbar. |
-| Open the report at startup | Opens the report each time the counter starts. |
-| Open with Fortnite | See below. |
-| Updates | Offered, installed automatically or off. |
-| Replays folder | Only change it if you moved it. |
-| Start the setup again | Clears your settings and runs the setup again. Your history is kept. |
+| `● LIVE` | Match in progress, chests counted live from the screen |
+| `● MATCH IN PROGRESS` | Match in progress, no live figure (screen reading off) — the count comes at the end |
+| `✓ CONFIRMED (replay)` | PC: exact figures from the replay files |
+| `● LIVE (screen)` | Console: match in progress, read from the Chiaki / OBS window |
+| `≈ ESTIMATE` | Console: estimated figures (beyond Epic's 1,000-chest cap) |
+| `✓ CONFIRMED (Epic)` | Console: exact figures from the Epic account |
 
-## Open with Fortnite
+**Summary tab:** current match (or last match with its end time), session, today, with the number of matches and the
+average. The **Open the counter** button (or **Ctrl+Shift+C**) brings the counter window back, even from the tray.
+The classic card and the HUD styles of LED-N's overlay are still available in the settings.
 
-With this option, a tiny invisible process starts with Windows and checks every few seconds whether Fortnite is running. It reads nothing from the game: it only looks at the list of running programs. When Fortnite starts, it opens the counter straight into the notification area (the game keeps the screen). When Fortnite closes, the counter counts your last match, then closes 30 seconds later; press any key in its window to keep it open. Can be turned off at any time in the **Settings** tab: the invisible process stops and is removed from the Windows startup. While the option is on, the invisible process keeps running after you quit the counter, so Windows refuses to delete or move `ChestCounter.exe`. Turn the option off first.
+### Live counting by reading the screen
 
-## The overlay
+Every time you open something, Fortnite shows a `+XP` popup with a label under it. ChestCounter+ reads that label with
+the OCR built into Windows, two times per second:
 
-Just the figures, outlined like the game's own, with no background: put it under the minimap and it blends into the HUD.
+<img src="docs/plus/xp-rare-chest.png" alt="+900 XP · RARE CHEST" height="190">&nbsp;&nbsp;<img src="docs/plus/xp-ammo-box.png" alt="+600 XP · RARE AMMO BOX" height="190">
 
-- **Big**: your **total** chests, with the golden chest.
-- **Last**: the chests of your last match. During a match: **● In a match** (its chests are counted at the end).
-- **Session**: the chests since the counter was started.
-- **★**: your treasures.
-
-| Shortcut | What it does |
+| Label on screen | Counted as |
 |---|---|
-| **Ctrl+Shift+O** | Show / hide the overlay. Works anywhere, even in game. |
-| **Ctrl+Shift+L** | Lock / unlock. **Locked**: the mouse goes through it (best in game). **Unlocked**: a background shows, hold the left mouse button to move it, right-click to hide it. |
+| `CHEST`, `COFFRE` | chest |
+| `RARE CHEST` | rare chest (counts as a chest too) |
+| `AMMO BOX`, `RARE AMMO BOX` | ammo box (counted apart, not a chest) |
+| `ELIMINATION`, `HEADSHOT`, `NEW STORM PHASE`… | logged in the match log only |
 
-To see it over the game, set Fortnite to **Windowed Fullscreen** (*Settings → Video → Window Mode*): in exclusive fullscreen, Windows cannot draw anything on top of the game. Prefer the old overlay, a dark card with more details? *Settings → Overlay style → classic*. Don't want one at all? *Settings → In-game overlay → off*. Streaming? `overlay.html` is an overlay with a transparent background for an **OBS** browser source.
+How it works, in short:
 
-## The report
+1. **Capture** the game window (`PrintWindow`), so it works **even behind other windows** — only minimizing it stops it.
+2. **Crop** the game picture (black bars of Chiaki / OBS removed) to the area where the popup appears, upscale it ×3.
+3. **Read** it with `Windows.Media.Ocr` and match `+N XP` with the label just under it. OCR mistakes such as
+   `RARE CREST` or `AMMO gox` are tolerated.
+4. **De-duplicate**: one popup stays on screen ~2 s and is seen on several frames; it counts once.
+5. **Lobby check** every 4 s: the top menu (`PLAY · SHOP · LOCKER…`) means you are not in a match.
 
-`report.html` opens in your browser and updates by itself: total, average, best match, chests per day, chest types, treasures (and **1 treasure every N chests**) and every match. It follows the Windows theme: night or day version.
+Where to read:
 
-<p align="center"><img src="docs/report-en.png" alt="Report" width="820"></p>
+- **PC**: the Fortnite window, nothing to set up.
+- **PS5**: [chiaki-ng](https://github.com/streetpea/chiaki-ng) (free Remote Play client for PC) or OBS (capture card).
+  Make the window as big as you can (1080p reads best).
 
-## Treasures
+### Console mode (PS5, Xbox, Switch)
 
-- **★★ Golden chest (certain).** When a chest gives a treasure hunt reward (cosmetic, jam track, loading screen, vehicle…), the server spawns a golden chest carrying the **prize id**. The tool reads it from the replay.
-- **★ Every treasure received (exact moment).** Each treasure you receive is recorded with its exact time and the chest it came from; it only counts if that chest is **yours**. When the item can be identified it is named; otherwise it shows as **"Treasure gizmo"** (golden firework, portable extractor, locators, extraction accelerator), whose exact type is not in the replay.
-- **Team treasures (estimate).** The treasure hunt shares every treasure with the whole team: the ones your teammates find can be shown in the report (checkbox), marked with the team icon. They are deduced from the treasures you receive without opening a chest, and never count in your totals.
-- A treasure that came from something other than a chest (ammo box…) is flagged with ⚑ and **low reliability**: it is most likely a mistake in reading the replay.
+Console replays never leave the console, so ChestCounter+ reads your **Epic account** instead (one-time sign-in,
+read-only):
 
-The game only sends prize ids, not names: the names of the known prizes are built into the tool.
+- **Chest counter**: the *Treasure Hunt* quest counts your chests, but stops at **1,000**.
+- **Beyond 1,000**: an estimate = your chests per match × the matches Epic reports per day. Calibrate it once with your
+  real numbers (matches and chests of the season) for a better estimate.
+- **End of match**: Epic updates your XP only when a match ends (tested: nothing during the match, everything a few
+  seconds after leaving). The counter sees it and closes the match with, in this order:
+  1. your answer (*How many chests?* on the phone or in the counter),
+  2. the chests read on screen (Chiaki / OBS),
+  3. your taps on the phone's **+1 chest** button,
+  4. otherwise your average, marked `≈`.
 
-## Profiles (several accounts on one PC)
+### Treasure odds
 
-The replays saved on a PC are normally its player's: **no name to type**, the tool counts the player who recorded each replay. If it finds replays from several accounts, each account gets its own profile with its own statistics. The tool then asks at each launch which account you play on, and you can switch at any time with **Switch profile** on the home tab. A match played on another account is saved in that account's profile, never lost.
+The **Chests · chances** tab shows, for each treasure of the week, your chance of having found it with the chests you
+opened: `1 − (1 − 1/N)^chests`, using the odds published for the season (gold outfit, pirate shop access, gold car
+decal, gold pickaxe or back bling, jam track, loading screen). Weekly treasures reset on Sunday at 14:00 UTC; pirate shop
+access counts for the whole season.
 
-## Updates
+<img src="docs/plus/bar-chances.png" alt="Chests · chances" height="380">
 
-At startup, the counter checks GitHub for a new version. If there is one, the home tab shows **what's new in your language**, with **Install version…**: it is downloaded, verified, and the counter restarts. Your history and settings are kept. After the update, the home tab shows once what has changed. **Check for updates** asks GitHub again at any time. In the settings you can choose *offered* (default), *installed automatically* (only between two matches) or *off* (no network access at all).
+Already got one? Tick it in **Treasures obtained** (in the counter) and it leaves the list. On PC, a treasure found in a
+replay is ticked automatically.
+
+### Phone companion
+
+Menu **Phone (QR code)**: the PC serves a small page on your local network. Scan the QR code with the phone's camera
+(same Wi-Fi), then *Add to Home screen* to keep it like an app.
+
+<img src="docs/plus/phone.png" alt="Phone page" width="300">
+
+- Your bar (total, current match, session, today, chances), refreshed every 3 s.
+- Console: **+1 chest** button during the match (when the screen is not read), *How many chests?* after a match, and
+  your last matches to correct (or delete with *not a match*).
+- The link holds a secret key; without it the page answers 403. Nothing leaves your network and the Epic sign-in is
+  never served.
+
+### Match log
+
+Menu **Match log (today)**: one line per `+XP` read on screen, with the time, plus the start of each match (with its
+mode) and the return to the lobby.
+
+```text
+14:20:12  ── match started (Battle Royale)
+14:20:46  +600 XP · CHEST  →  chest
+14:20:52  +600 XP · NEW STORM PHASE  →  other
+14:21:14  +1700 XP · HEADSHOT  →  other
+14:23:19  +300 XP · AMMO BOX  →  ammo
+14:23:30  +600 XP · CHEST  →  chest
+14:47:07  ── back to the lobby
+```
+
+### Game modes
+
+The mode is read on the lobby card (`BATTLE ROYALE`, `RELOAD`, `LEGO`…) before each match. By default **only Battle
+Royale is counted live**; *Settings → Modes counted live* switches to *Battle Royale + Reload* or *all modes*. If the
+mode could not be read, the match is counted (better than missing it) and the log says so.
+
+## Install
+
+1. Download the `ChestCounterPlus` folder and put it somewhere that stays (for example `C:\ChestCounterPlus`, not
+   *Downloads*).
+2. Double-click **`Lancer ChestCounter+.bat`** (or `ChestCounterPlus.exe`). Windows may warn that the app is not signed:
+   *More info → Run anyway*.
+3. First launch: choose your language (English, French, Spanish) and your platform (PC or Console).
+   - Had LED-N's Chest Counter? Its history is copied automatically. `Desinstaller ChestCounter LED-N.bat` removes the
+     old app afterwards (it never touches ChestCounter+).
+4. **PC**: turn replays on in Fortnite (*Settings → Game → Replays → Record Replays: On*) and use *Windowed fullscreen*.
+   **Console**: *Sign in to Epic* once; open Chiaki or OBS for live counting.
+5. Optional: *Settings → Open with Fortnite* starts the counter by itself when the game starts.
+
+## Keyboard shortcuts
+
+They work everywhere, even in game.
+
+| Shortcut | Action |
+|---|---|
+| **Ctrl+Shift+E** | Open the bar, then next tab (Summary → Chests · chances → closed) |
+| **Ctrl+Shift+O** | Show / hide the bar |
+| **Ctrl+Shift+L** | Lock / unlock the bar (unlocked: drag it, click its tabs and buttons) |
+| **Ctrl+Shift+C** | Bring the counter window back |
+
+## Settings
+
+| Setting | Values |
+|---|---|
+| Platform | PC (replays) · Console (Epic account) |
+| Screen reading | auto (PC → Fortnite, console → Chiaki) · Fortnite · Chiaki · OBS · off |
+| Modes counted live | Battle Royale only · Battle Royale + Reload · all modes |
+| Overlay | on / off, style (bar, HUD, classic), size, opacity, position |
+| Open with Fortnite | starts the counter when Fortnite starts (Windows *Run* key) |
+| Language | English · Français · Español |
+
+## Is it safe?
+
+- **No game modification**: nothing in the Fortnite install folder is touched; replay files are opened read-only.
+- **No memory reading, no injection**: screen reading copies the window's picture like a streaming app (OBS) does.
+- **Epic account**: read-only device sign-in, used for the Treasure Hunt quest, XP and match stats. You can sign out
+  (and revoke it) from the counter at any time.
+- No anti-cheat-sensitive technique is used, but this is a third-party tool: use it at your own risk.
 
 ## Your data
 
-Everything is stored in `%APPDATA%\ChestCounter` (**Help → Open the data folder**):
+Everything stays on your PC, in `%APPDATA%\ChestCounterPlus`:
 
 | File | Content |
 |---|---|
-| `report.html` | The report (opens in your browser). |
-| `overlay.html` | Transparent overlay for OBS. |
-| `matches.csv` | One line per match, for Excel or Google Sheets. |
-| `data.json` | Your whole history. **Back it up** if you change PC. |
-| `config.json` | Your settings, your profile, the overlay position. |
-| `errors.log` | Details of unreadable replays, to attach to a bug report. |
+| `data.json`, `config.json` | PC matches and settings |
+| `ps5\` | console mode: `auth.json` (**your Epic sign-in, never share it**), `data.json`, report |
+| `journal\` | match logs, one file per day |
+| `treasures.json` | treasures you ticked |
+| `report.html` | detailed report (opened from the counter) |
 
-To start over: **Settings → Start the setup again** (your history is kept), or delete this folder. If you used the old version (ChestTracker), your `%APPDATA%\ChestTracker` folder is taken over automatically.
+## Build from source
 
-## FAQ
+Requires the .NET 10 SDK. Builds a single self-contained Windows exe (works from WSL too):
 
-**Nothing is counted.** Check that replays are turned on in Fortnite, and that the counter is running when the match ends. The home tab tells you if the replays folder is missing or empty.
-
-**Are ammo boxes counted?** No. Ammo boxes, food boxes and loot cannons are listed separately in the report and are not part of the chest total. Chests you **destroy** instead of opening are counted. A chest that is refilled during the match and that you open again counts once more; coming back near a chest you already opened (dug-up buried chest, sprite chest) does not count it twice.
-
-**Creative modes?** Only Battle Royale matches are counted; other modes are skipped.
-
-**Fortnite closed in the middle of a match.** Its replay is incomplete (Fortnite never wrote the decryption key): that match cannot be counted, and the tool shows it as an "incomplete replay".
-
-**"Cannot read this replay".** A Fortnite update can change the replay format; the parser then needs an update. Matches already counted are kept. [Open an issue](../../issues) with `errors.log` attached (**Help → Open the error log**).
-
-**Cannot delete `ChestCounter.exe` ("the file is open in another program").** The invisible "Open with Fortnite" process still uses it, even with the counter closed. Open the counter and set **Settings → Open with Fortnite** to *no*: the process stops and the exe can be deleted.
-
-**Where did the window go?** Minimized, it is in the notification area (chest icon, sometimes behind the small ^ arrow next to the clock). Prefer the taskbar? **Settings → Minimize to the notification area: no**.
-
-**Already open?** Only one counter can run at a time: starting it again just tells you it is already open.
-
-**Can a match be counted twice?** No, even if you rename or save the replay.
-
-## Command line options
-
-```
-ChestCounter.exe --lang <fr|en|es>   change the language
-ChestCounter.exe --demos <folder>    another replays folder
-ChestCounter.exe --data <folder>     another data folder
-ChestCounter.exe --once              analyze the finished replays, then quit
-ChestCounter.exe --reset-config      run the setup again
-ChestCounter.exe --overlay-preview <file.png>   save previews of the overlay, then quit
+```bash
+dotnet publish src/ChestCounter/ChestCounter.csproj -c Release -r win-x64 --self-contained true \
+  -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true \
+  -p:DebugType=none -o dist
+dotnet test tests/ChestCounter.Tests        # unit tests (xUnit)
 ```
 
-## Build it yourself
+Project layout (main files added by ChestCounter+):
 
-Install the [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0) (Windows x64), then double-click **`build.bat`**: the exe is written to `dist\ChestCounter.exe`. The GitHub Actions workflow builds the exe on every push and attaches it to a release when a `v*` tag is pushed, with the text of [`RELEASE_NOTES.md`](RELEASE_NOTES.md) (also shown in the counter after an update).
+| File | Role |
+|---|---|
+| `Ps5Mode.cs` | console mode: Epic sign-in, Treasure Hunt counter, estimate, end-of-match detection |
+| `ConsoleMatches.cs` | console matches: XP-based end of match, answers, screen counts, averages |
+| `LiveScreen.cs`, `ScreenOcr.cs`, `XpPopup.cs` | screen reading: capture, OCR, `+XP` popup parsing, lobby and mode |
+| `BarModel.cs`, `NativeOverlay.cs` | the drop-down bar (Win32 / GDI) |
+| `TreasureOdds.cs`, `ObtainedStore.cs`, `Assets/treasures.json` | treasure odds and ticked treasures |
+| `PhoneServer.cs`, `Assets/phone.html` | phone page (local HTTP server, QR code) |
+| `Sessions.cs` | session and day windows |
 
-## License and credits
+Diagnostic tools: `--ps5-xp [minutes]` (logs XP / quest changes), `--ps5-stats`, `--ps5-quests`,
+`--ocr-test [minutes] [window]` (logs what the screen reader sees), `--ocr-file <png>…` (reads screenshots offline).
 
-[MIT](LICENSE). Replay reading is based on [FortniteReplayDecompressor](https://github.com/Shiqan/FortniteReplayDecompressor) by Shiqan (MIT), slightly modified: see [`lib/PATCHES.md`](lib/PATCHES.md). The report headings use the [Pirata One](https://fonts.google.com/specimen/Pirata+One) font (SIL Open Font License, [`src/ChestCounter/Assets/PirataOne-OFL.txt`](src/ChestCounter/Assets/PirataOne-OFL.txt)). Thanks to [koiseka](https://github.com/koiseka) for their counting fixes ([#6](../../pull/6)).
+## Limits
 
-This project is not affiliated with, endorsed or sponsored by Epic Games. Fortnite is a trademark of Epic Games, Inc.
+- Live counting needs the `+XP` popup to be visible: if you hide the HUD or the window is minimized, nothing is read.
+- OCR can miss a popup now and then (small window, busy background). The replay (PC) or your answer (console) is what
+  confirms the final count.
+- Console beyond 1,000 chests: without screen reading or your answers, figures are estimates (`≈`). Epic publishes daily
+  match counts only the next day.
+- Treasure odds come from a frozen copy of the season data; they are not downloaded.
+- The `+XP` labels and the lobby menu are read in English and French; other game languages may need new keywords.
+
+## Credits and license
+
+- **[LED-N / Fortnite-ChestCounter](https://github.com/LED-N/Fortnite-ChestCounter)** — the original app this is built
+  on: replay analysis, report, overlay, installer logic (MIT). The season odds in `Assets/treasures.json` are a copy of
+  its 1.5.0 content (MIT). LED-N's original READMEs are kept in [`docs/upstream`](docs/upstream).
+- [FortniteReplayDecompressor](https://github.com/Shiqan/FortniteReplayDecompressor) by Shiqan — replay parsing (MIT,
+  in `lib/`, changes listed in [`lib/PATCHES.md`](lib/PATCHES.md)); OozSharp (Ooz by powzix, converted by SL-x-TnT).
+- [QRCoder](https://github.com/codebude/QRCoder) — QR code of the phone link (MIT).
+- [Pirata One](https://fonts.google.com/specimen/Pirata+One) — report headings font (SIL Open Font License).
+- [chiaki-ng](https://github.com/streetpea/chiaki-ng) — not bundled; recommended to read a PS5 on the PC.
+
+Released under the [MIT license](LICENSE), like the original. Fortnite is a trademark of Epic Games; this project is not
+affiliated with or endorsed by Epic Games.

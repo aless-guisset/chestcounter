@@ -1,3 +1,5 @@
+> Original README of [LED-N / Fortnite-ChestCounter](https://github.com/LED-N/Fortnite-ChestCounter) 1.4.0, kept for reference. See the [ChestCounter+ README](../../README.md).
+
 <div align="center">
 
 [English](README.md) · **Français** · [Español](README.es.md)
