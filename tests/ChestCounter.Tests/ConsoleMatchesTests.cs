@@ -110,3 +110,31 @@ public class ConsoleMatchesTests
         Assert.Null(none.Seen);
     }
 }
+
+public class ConsoleScreenEndTests
+{
+    private static readonly DateTime T = new(2026, 11, 13, 19, 48, 0, DateTimeKind.Utc);
+
+    [Fact]
+    public void ScreenEnd_RecordsRealMatchesOnly()
+    {
+        Assert.True(ConsoleMatches.ScreenEndIsMatch(true, 0, TimeSpan.FromMinutes(10), null, T));
+        Assert.True(ConsoleMatches.ScreenEndIsMatch(true, 3, TimeSpan.FromSeconds(30), null, T));
+        Assert.False(ConsoleMatches.ScreenEndIsMatch(true, 0, TimeSpan.FromSeconds(4), null, T));   // lobby mal lu 4 s
+        Assert.False(ConsoleMatches.ScreenEndIsMatch(false, 0, TimeSpan.FromMinutes(10), null, T)); // mode pas compté
+        Assert.False(ConsoleMatches.ScreenEndIsMatch(true, 0, TimeSpan.FromMinutes(10), T.AddSeconds(-40), T)); // Epic l'a déjà finie
+    }
+
+    [Fact]
+    public void EpicEnd_JoinsTheMatchTheScreenAlreadyEnded()
+    {
+        var list = new List<PlayedMatch>();
+        var screen = ConsoleMatches.AddEnded(list, T, 0, null, seen: 7, ammo: 1);
+        Assert.Same(screen, ConsoleMatches.WaitingForEpic(list, T.AddMinutes(1)));
+        screen.EpicEnded = true;
+        Assert.Null(ConsoleMatches.WaitingForEpic(list, T.AddMinutes(1)));     // une seule fois
+        var old = ConsoleMatches.AddEnded(list, T, 0, null, seen: 2);
+        Assert.Null(ConsoleMatches.WaitingForEpic(list, T.AddMinutes(20)));    // trop vieille : nouvelle partie
+        Assert.Same(old, ConsoleMatches.WaitingForEpic(list, T.AddMinutes(3)));
+    }
+}

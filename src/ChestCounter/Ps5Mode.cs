@@ -83,6 +83,8 @@ public static class Ps5Mode
         public int SeenChests { get; set; }
         public int SeenAmmo { get; set; }
         public bool ScreenRead { get; set; }
+        /// <summary>Dernier « niveau:xp » vu : une partie finie pendant que le compteur était fermé est vue au relevé suivant.</summary>
+        public string? XpKey { get; set; }
     }
 
     public sealed class Calibration
@@ -1086,8 +1088,17 @@ public static class Ps5Mode
             }
             // Fin de partie : l'XP du profil ne change qu'à la sortie d'une partie (rien pendant).
             var xpKey = ConsoleMatches.XpKey(profile);
-            if (ConsoleMatches.Ended(_xpKey, xpKey))
+            _xpKey ??= _data.XpKey;
+            if (ConsoleMatches.Ended(_xpKey, xpKey) && ConsoleMatches.WaitingForEpic(_data.Played, DateTime.UtcNow) is { } done)
             {
+                // Déjà finie par l'écran (retour au lobby) : Epic confirme, et donne le chiffre exact sous le plafond.
+                done.EpicEnded = true;
+                if (prev < Cap && c.Value <= Cap) (done.Chests, done.Source) = (c.Value - prev, "epic");
+                _lastEpicEnd = DateTime.UtcNow;
+            }
+            else if (ConsoleMatches.Ended(_xpKey, xpKey))
+            {
+                _lastEpicEnd = DateTime.UtcNow;
                 int? epicDelta = prev < Cap && c.Value <= Cap ? c.Value - prev : null; // sous le plafond : chiffre exact
                 var m = ConsoleMatches.AddEnded(_data.Played, DateTime.UtcNow, _data.Taps, epicDelta,
                     _data.ScreenRead ? _data.SeenChests : null, _data.SeenAmmo);
@@ -1097,7 +1108,7 @@ public static class Ps5Mode
                     : m.Seen is int sc ? $" : {L.Count(sc, "coffre", "chest", "cofre")} ({L.T("lus à l'écran", "read on screen", "leídos en pantalla")})" : m.Taps > 0 ? $" : {L.Count(m.Taps, "coffre", "chest", "cofre")} ({L.T("téléphone", "phone", "teléfono")})"
                     : L.T(" : combien de coffres ? (téléphone ou menu « Dernière partie »)", ": how many chests? (phone or \"Last match\" menu)", ": ¿cuántos cofres? (teléfono o menú «Última partida»)")), ConsoleColor.Cyan);
             }
-            if (xpKey != null) _xpKey = xpKey;
+            if (xpKey != null) _xpKey = _data.XpKey = xpKey;
             _data.Last = c.Value;
             _tracked = c;
             var season = BuildSeason(profile);
@@ -1210,6 +1221,7 @@ public static class Ps5Mode
     private static bool NeedsAnswer(PlayedMatch m) => Capped && m.Chests == null && m.Seen == null && m.Taps == 0 && DateTime.UtcNow - m.EndedUtc < TimeSpan.FromHours(3);
 
     private static bool? _lastLobby;
+    private static DateTime? _screenMatchStart, _lastEpicEnd;
 
     /// <summary>En partie d'après l'écran (Chiaki lu, menu du lobby absent).</summary>
     private static bool ScreenInMatch => LiveScreen.Counting;
@@ -1234,7 +1246,21 @@ public static class Ps5Mode
         var lobby = LiveScreen.Active ? LiveScreen.InLobby : null;
         if (lobby != _lastLobby)
         {
-            if (lobby == true && _lastLobby == false) RefreshNow(); // l'XP de fin de partie est déjà là
+            if (lobby == false) _screenMatchStart ??= DateTime.UtcNow;
+            if (lobby == true && _lastLobby == false)
+            {
+                // Fin de partie vue à l'écran, comme sur PC : la partie est notée tout de suite, Epic la confirmera.
+                var now = DateTime.UtcNow;
+                if (ConsoleMatches.ScreenEndIsMatch(_data.ScreenRead, _data.SeenChests, now - (_screenMatchStart ?? now), _lastEpicEnd, now))
+                {
+                    var m = ConsoleMatches.AddEnded(_data.Played, now, _data.Taps, null, _data.SeenChests, _data.SeenAmmo);
+                    (_data.Taps, _data.SeenChests, _data.SeenAmmo, _data.ScreenRead) = (0, 0, 0, false);
+                    Add(L.T($"Partie finie à {m.EndedUtc.ToLocalTime():HH:mm}", $"Match ended at {m.EndedUtc.ToLocalTime():HH:mm}", $"Partida terminada a las {m.EndedUtc.ToLocalTime():HH:mm}")
+                        + $" : {L.Count(m.Seen ?? 0, "coffre", "chest", "cofre")} ({L.T("lus à l'écran", "read on screen", "leídos en pantalla")})", ConsoleColor.Cyan);
+                }
+                RefreshNow(); // l'XP de fin de partie arrive : Epic confirme
+            }
+            if (lobby != false) _screenMatchStart = null;
             _lastLobby = lobby;
             changed = true;
         }

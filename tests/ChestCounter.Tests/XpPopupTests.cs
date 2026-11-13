@@ -174,3 +174,47 @@ public class XpPopupTests
     [InlineData(null, "reload", false)]         // réglage absent = Battle Royale seulement
     public void ModeAllowed(string? setting, string? mode, bool allowed) => Assert.Equal(allowed, LiveScreen.Allowed(setting, mode));
 }
+
+public class XpComboTests
+{
+    private static readonly DateTime T0 = new(2026, 11, 13, 20, 0, 47);
+
+    [Fact]
+    public void Multiplier_FromLabelOrExactXp()
+    {
+        Assert.Equal(2, XpPopup.Combo.Multiplier("RARE CHEST X2", 3600, "rare-chest"));
+        Assert.Equal(2, XpPopup.Combo.Multiplier("RARE CREST K2", 4500, "rare-chest")); // OCR : K2, XP mal lue
+        Assert.Equal(2, XpPopup.Combo.Multiplier("CHE S r X2", 0, "chest"));
+        Assert.Equal(2, XpPopup.Combo.Multiplier("RARE CREST,", 1800, "rare-chest"));    // 2 × 900
+        Assert.Equal(3, XpPopup.Combo.Multiplier("CHEST", 1800, "chest"));               // 3 × 600
+        Assert.Equal(1, XpPopup.Combo.Multiplier("CHEST", 600, "chest"));
+        Assert.Equal(1, XpPopup.Combo.Multiplier("SPRITE CREST", 3470, "chest"));
+        Assert.Equal(1, XpPopup.Combo.Multiplier("CHEST", 0, "chest"));
+    }
+
+    [Fact]
+    public void Combo_RereadsOfTheSameStackCountOnce()
+    {
+        // Partie du 13/11 20:00 : 2 coffres rares ouverts vite, la bulle « RARE CHEST X2 » relue 6 fois.
+        var c = new XpPopup.Combo();
+        var reads = new (int s, string label, int xp, string kind)[]
+        {
+            (0, "RARE CREST,", 1800, "rare-chest"), (2, "SPRITE CREST", 3470, "chest"), (2, "RARE CHEST X2", 2700, "rare-chest"),
+            (3, "RARE CREST X2", 3600, "rare-chest"), (5, "RARE CREST X2", 14500, "rare-chest"), (5, "RARE CREST K2", 4500, "rare-chest"),
+            (6, "CHE S r X2", 0, "chest"),
+        };
+        Assert.Equal(2, reads.Sum(r => c.Credit(r.kind, r.label, r.xp, T0.AddSeconds(r.s))));
+    }
+
+    [Fact]
+    public void Combo_SeparateChestsStillCount()
+    {
+        var c = new XpPopup.Combo();
+        var total = Enumerable.Range(0, 5).Sum(i => c.Credit("chest", "CHEST", 600, T0.AddSeconds(8 * i))); // un coffre toutes les 8 s
+        Assert.Equal(5, total);
+        Assert.Equal(1, c.Credit("chest", "CHEST", 600, T0.AddSeconds(100)));
+        Assert.Equal(1, c.Credit("chest", "CHEST X2", 1200, T0.AddSeconds(102)));  // 2e coffre dans la même bulle
+        Assert.Equal(1, c.Credit("chest", "CHEST X3", 1800, T0.AddSeconds(104)));
+        Assert.Equal(1, c.Credit("ammo", "AMMO BOX", 0, T0.AddSeconds(104)));       // les munitions à part
+    }
+}

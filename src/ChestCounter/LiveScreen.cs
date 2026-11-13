@@ -117,6 +117,7 @@ public static class LiveScreen
         if (engine == null) return;
 
         var tracker = new XpPopup.Tracker();
+        var combo = new XpPopup.Combo();
         var hwnd = IntPtr.Zero;
         string? current = null;
         var nextFind = DateTime.MinValue;
@@ -169,11 +170,14 @@ public static class LiveScreen
                             tracker.Add(new XpPopup.Event(0, l.Text.Trim()), DateTime.Now);
                     }
                 }
-                foreach (var (xp, label, at) in tracker.Flush(DateTime.Now))
+                foreach (var (xp, label, at) in tracker.Flush(DateTime.Now).OrderBy(f => f.At))
                 {
                     var kind = XpPopup.Kind(label);
-                    Events.Enqueue(new Seen(at, xp, label, kind));
-                    Journal($"{at:HH:mm:ss}  +{xp} XP · {label ?? "?"}  →  {KindName(kind)}", at);
+                    var credit = IsChest(kind) || kind == "ammo" ? combo.Credit(kind, label, xp, at) : 1;
+                    for (var i = 0; i < credit; i++) Events.Enqueue(new Seen(at, i == 0 ? xp : 0, label, kind));
+                    Journal($"{at:HH:mm:ss}  +{xp} XP · {label ?? "?"}  →  {KindName(kind)}"
+                        + (credit == 0 ? L.T(" (même pile, déjà compté)", " (same stack, already counted)", " (misma pila, ya contado)")
+                        : credit > 1 ? $" ×{credit}" : ""), at);
                 }
             }
             catch (Exception e)

@@ -151,6 +151,38 @@ public static class XpPopup
         }
     }
 
+    /// <summary>
+    /// Coffres ouverts vite : Fortnite empile les gains dans une seule bulle (« RARE CHEST X2 », XP doublée) qui reste
+    /// affichée et change, donc se relit plusieurs fois (13/11 : 2 coffres rares lus 6 fois). Tant que les gains d'un même
+    /// type s'enchaînent (moins de 5 s entre eux), c'est la même pile : on ne compte que ce qui dépasse le plus grand
+    /// « Xn » déjà vu. Des coffres espacés (bulle disparue) comptent chacun.
+    /// </summary>
+    public sealed class Combo
+    {
+        private static readonly TimeSpan Window = TimeSpan.FromSeconds(5);
+        private static readonly Regex TimesRe = new(@"(?:^|[\s,.])[XK×]\s?([2-9])\s*[,.]?\s*$", RegexOptions.IgnoreCase);
+        private readonly Dictionary<string, (DateTime Last, int Count)> _piles = new();
+
+        /// <summary>Nombre de coffres de la bulle : « X2 » lu, sinon l'XP si c'est un multiple exact (2 × 900…), sinon 1.</summary>
+        public static int Multiplier(string? label, int xp, string kind)
+        {
+            if (label != null && TimesRe.Match(label.Trim()) is { Success: true } m) return int.Parse(m.Groups[1].Value);
+            var unit = kind switch { "chest" => 600, "rare-chest" => 900, _ => 0 };
+            if (unit > 0 && xp > unit && xp % unit == 0 && xp / unit <= 5) return xp / unit;
+            return 1;
+        }
+
+        /// <summary>Combien de nouveaux coffres (ou boîtes) ce gain ajoute : 0 si c'est une relecture de la même pile.</summary>
+        public int Credit(string kind, string? label, int xp, DateTime at)
+        {
+            var family = kind is "rare-chest" ? "chest" : kind;
+            var n = Multiplier(label, xp, kind);
+            var count = _piles.TryGetValue(family, out var p) && at - p.Last < Window ? p.Count : 0;
+            _piles[family] = (at, Math.Max(count, n));
+            return Math.Max(0, n - count);
+        }
+    }
+
     /// <summary>L'image du jeu dans la fenêtre, sans les bandes noires (Chiaki, OBS…) : (x, y, largeur, hauteur).</summary>
     public static (int X, int Y, int W, int H) GameArea(ScreenOcr.Frame f)
     {

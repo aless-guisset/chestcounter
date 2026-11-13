@@ -20,6 +20,8 @@ public sealed class PlayedMatch
     /// <summary>Boîtes de munitions lues à l'écran.</summary>
     public int Ammo { get; set; }
     public string? Source { get; set; }
+    /// <summary>La fin a aussi été vue par Epic (XP du profil) : ne pas la rattacher deux fois.</summary>
+    public bool EpicEnded { get; set; }
 }
 
 public static class ConsoleMatches
@@ -87,6 +89,18 @@ public static class ConsoleMatches
         }
         return c;
     }
+
+    /// <summary>
+    /// Retour au lobby lu à l'écran = fin de partie, comme sur PC (sans attendre Epic, qui peut tarder ou ne rien voir).
+    /// Pas pour un mode non compté, un lobby mal lu quelques secondes, ni une partie qu'Epic vient déjà de finir.
+    /// </summary>
+    public static bool ScreenEndIsMatch(bool screenRead, int seen, TimeSpan duration, DateTime? lastEndedUtc, DateTime nowUtc) =>
+        screenRead && (seen > 0 || duration >= TimeSpan.FromSeconds(90))
+        && !(lastEndedUtc is DateTime l && nowUtc - l < TimeSpan.FromMinutes(2));
+
+    /// <summary>Partie déjà finie par l'écran qui attend encore la fin vue par Epic (moins de 10 min).</summary>
+    public static PlayedMatch? WaitingForEpic(List<PlayedMatch> list, DateTime nowUtc) =>
+        list.LastOrDefault() is { Source: "screen", EpicEnded: false } m && nowUtc - m.EndedUtc < TimeSpan.FromMinutes(10) ? m : null;
 
     public static PlayedMatch AddEnded(List<PlayedMatch> list, DateTime endedUtc, int taps, int? epicDelta, int? seen = null, int ammo = 0)
     {
