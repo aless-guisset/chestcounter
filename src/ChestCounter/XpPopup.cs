@@ -36,8 +36,10 @@ public static class XpPopup
     }
 
     // L'OCR se trompe sur la petite étiquette : « RARE CREST », « AMMO gox »… On accepte les erreurs courantes.
-    private static readonly Regex ChestRe = new(@"C\s?[HR]\s?E\s?S|CHES|COFFRE|C0FFRE", RegexOptions.IgnoreCase);
-    private static readonly Regex AmmoRe = new(@"AMM[O0]|MUNITION", RegexOptions.IgnoreCase);
+    // Langues du jeu : anglais (vérifié en partie), français, espagnol, allemand, italien, portugais, polonais, turc.
+    private static readonly Regex ChestRe = new(@"C\s?[HR]\s?E\s?S|CHES|C[O0]FFRE|C[O0]FRE|TRUHE|F[O0]RZIER|BA[UÚ]\b|SKRZYNI|SANDI?K", RegexOptions.IgnoreCase);
+    private static readonly Regex AmmoRe = new(@"AMM[O0]|MUNI[TCZÇ]|AMUNIC|CEPHANE", RegexOptions.IgnoreCase);
+    private static readonly Regex RareRe = new(@"RARE|RAR[OA]|SELTEN|RZADK|NAD[IİI]R", RegexOptions.IgnoreCase);
 
     /// <summary>chest, rare-chest, ammo, elimination, other ou unknown (étiquette pas lue).</summary>
     public static string Kind(string? label)
@@ -45,13 +47,15 @@ public static class XpPopup
         if (string.IsNullOrWhiteSpace(label)) return "unknown";
         var t = label.ToUpperInvariant();
         if (AmmoRe.IsMatch(t)) return "ammo";
-        if (ChestRe.IsMatch(t)) return t.Contains("RARE") ? "rare-chest" : "chest";
+        if (ChestRe.IsMatch(t)) return RareRe.IsMatch(t) ? "rare-chest" : "chest";
         if (t.Contains("ELIMIN")) return "elimination";
         return "other";
     }
 
     private static readonly string[] LobbyWords = { "PLAY", "SHOP", "LOCKER", "PASSES", "QUESTS", "COMPETE", "CAREER",
-        "JOUER", "BOUTIQUE", "CASIER", "QUÊTES", "QUETES", "COMPÉTITION", "CARRIÈRE" };
+        "JOUER", "BOUTIQUE", "CASIER", "QUÊTES", "QUETES", "COMPÉTITION", "CARRIÈRE",
+        "JUGAR", "TIENDA", "TAQUILLA", "MISIONES", "SPIELEN", "SPIND", "AUFTRÄGE", "GIOCA", "NEGOZIO", "ARMADIETTO", "MISSIONI",
+        "JOGAR", "LOJA", "ARMÁRIO", "MISSÕES" };
 
     /// <summary>Le menu du haut du lobby (au moins 3 de ses mots) : on n'est pas en partie.</summary>
     public static bool IsLobby(IEnumerable<ScreenOcr.Line> lines)

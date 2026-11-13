@@ -55,6 +55,17 @@ public class XpPopupTests
     [InlineData("RARE CREST", "rare-chest")]
     [InlineData("RARE AMMO gox", "ammo")]
     [InlineData("CHES", "chest")]
+    [InlineData("COFRE", "chest")]                       // espagnol
+    [InlineData("COFRE RARO", "rare-chest")]
+    [InlineData("CAJA DE MUNICIÓN", "ammo")]
+    [InlineData("TRUHE", "chest")]                       // allemand
+    [InlineData("SELTENE TRUHE", "rare-chest")]
+    [InlineData("MUNITIONSKISTE", "ammo")]
+    [InlineData("FORZIERE", "chest")]                    // italien
+    [InlineData("CASSA DI MUNIZIONI", "ammo")]
+    [InlineData("BAÚ", "chest")]                         // portugais
+    [InlineData("SKRZYNIA", "chest")]                    // polonais
+    [InlineData("SANDIK", "chest")]                      // turc
     [InlineData("SLURP BARREL", "other")]
     [InlineData(null, "unknown")]
     public void Kind_FromLabel(string? label, string kind) => Assert.Equal(kind, XpPopup.Kind(label));

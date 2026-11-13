@@ -285,7 +285,9 @@ Diagnostic tools: `--ps5-xp [minutes]` (logs XP / quest changes), `--ps5-stats`,
 - Console beyond 1,000 chests: without screen reading or your answers, figures are estimates (`≈`). Epic publishes daily
   match counts only the next day.
 - Treasure odds come from a frozen copy of the season data; they are not downloaded.
-- The `+XP` labels and the lobby menu are read in English and French; other game languages may need new keywords.
+- The `+XP` labels are checked live in English. French, Spanish, German, Italian, Portuguese, Polish and Turkish
+  keywords are included but not yet confirmed in a real match; languages with other alphabets (Russian, Japanese…) are
+  not read.
 
 ## Credits and license
 
