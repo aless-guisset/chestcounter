@@ -52,10 +52,21 @@ public static class ScreenOcr
             try { Console.WriteLine(l); } catch { }
         }
 
+        var tracker = new XpPopup.Tracker();
+        var counts = new Dictionary<string, int>();
+        string Totals() => $"coffres {counts.GetValueOrDefault("chest")} · coffres rares {counts.GetValueOrDefault("rare-chest")} · munitions {counts.GetValueOrDefault("ammo")} · éliminations {counts.GetValueOrDefault("elimination")} · autres {counts.GetValueOrDefault("other") + counts.GetValueOrDefault("unknown")}";
+        void Report(int xp, string? label, DateTime at)
+        {
+            var kind = XpPopup.Kind(label);
+            counts[kind] = counts.GetValueOrDefault(kind) + 1;
+            var what = kind switch { "chest" => "COFFRE", "rare-chest" => "COFFRE RARE", "ammo" => "munitions", "elimination" => "élimination", "other" => "autre", _ => "?" };
+            var line = $"{at:HH:mm:ss.f}  +{xp} XP · {label ?? "(étiquette illisible)"}  →  {what}   [{Totals()}]";
+            File.AppendAllText(path, line + "\n");
+            try { Console.WriteLine(line); } catch { }
+        }
         var end = DateTime.UtcNow.AddMinutes(minutes);
         var shots = 0;
         var lastNoWindow = DateTime.MinValue;
-        var recent = new Dictionary<string, DateTime>();
         while (DateTime.UtcNow < end)
         {
             var started = Stopwatch.StartNew();
@@ -84,29 +95,36 @@ public static class ScreenOcr
                         _firstSaved = true; // pour vérifier que c'est bien l'image du jeu qui est lue
                         SavePng(frame, Path.Combine(folder, "premiere-image.png"));
                     }
-                    var lines = Recognize(engine, frame).Where(l => Interesting.IsMatch(l.Text)).ToList();
-                    var fresh = lines.Where(l => !recent.TryGetValue(l.Text, out var seen) || DateTime.UtcNow - seen > TimeSpan.FromSeconds(4)).ToList();
-                    foreach (var l in lines) recent[l.Text] = DateTime.UtcNow;
-                    if (fresh.Count > 0)
+                    // Zone du gain d'XP, agrandie ×3 puis ×4 : l'une lit souvent ce que l'autre rate.
+                    var seen = false;
+                    foreach (var scale in new[] { 3, 4 })
                     {
-                        Log(string.Join("  |  ", fresh.Select(l => $"« {l.Text} » @ {l.X:0}%,{l.Y:0}% ({l.W:0}×{l.H:0}%)")));
-                        if (shots < 40)
+                        var zone = XpPopup.Zone(frame, scale, null);
+                        var lines = Recognize(engine, zone);
+                        var events = XpPopup.Parse(lines);
+                        foreach (var e in events) tracker.Add(e, DateTime.Now);
+                        foreach (var l in lines.Where(l => XpPopup.IsUsefulLabel(l.Text) && !events.Any(e => e.Label == l.Text.Trim())))
+                            tracker.Add(new XpPopup.Event(0, l.Text.Trim()), DateTime.Now);
+                        if (events.Count > 0 && !seen && shots < 80)
                         {
+                            seen = true;
                             shots++;
-                            SavePng(frame, Path.Combine(folder, $"ocr-{DateTime.Now:HHmmss}.png"));
+                            SavePng(zone, Path.Combine(folder, $"zone-{DateTime.Now:HHmmss-f}.png"));
                         }
                     }
                 }
+                foreach (var (xp, label, at) in tracker.Flush(DateTime.Now)) Report(xp, label, at);
             }
             catch (Exception e)
             {
                 Log("erreur " + e.Message);
                 Thread.Sleep(2000);
             }
-            var rest = 1000 - (int)started.ElapsedMilliseconds;
+            var rest = 500 - (int)started.ElapsedMilliseconds;
             if (rest > 0) Thread.Sleep(rest);
         }
-        Log("fin de la lecture");
+        foreach (var (xp, label, at) in tracker.Flush(DateTime.Now, all: true)) Report(xp, label, at);
+        Log($"fin de la lecture · {Totals()}");
         return 0;
     }
 
@@ -218,6 +236,48 @@ public static class ScreenOcr
             list.Add(new Line(line.Text, 100 * x0 / f.Width, 100 * y0 / f.Height, 100 * (x1 - x0) / f.Width, 100 * (y1 - y0) / f.Height));
         }
         return list;
+    }
+
+    /// <summary>--ocr-file &lt;png&gt;… : lit la zone du gain d'XP sur des captures (réglage sans jouer).</summary>
+    public static int TestFiles(IEnumerable<string> files)
+    {
+        var engine = OcrEngine.TryCreateFromUserProfileLanguages();
+        if (engine == null) return 1;
+        foreach (var file in files)
+        {
+            var f = LoadPng(file);
+            var tr = new XpPopup.Tracker();
+            var t0 = DateTime.Now;
+            foreach (var scale in new[] { 3, 4 })
+            {
+                var lines = Recognize(engine, XpPopup.Zone(f, scale, null));
+                var events = XpPopup.Parse(lines);
+                foreach (var e in events) tr.Add(e, t0);
+                foreach (var l in lines.Where(l => XpPopup.IsUsefulLabel(l.Text) && !events.Any(e => e.Label == l.Text.Trim())))
+                    tr.Add(new XpPopup.Event(0, l.Text.Trim()), t0);
+            }
+            var found = tr.Flush(t0, all: true);
+            Console.WriteLine($"{Path.GetFileName(file)} : " + (found.Count == 0 ? "rien" : string.Join(" | ", found.Select(e => $"+{e.Xp} XP · {e.Label} → {XpPopup.Kind(e.Label)}"))));
+        }
+        return 0;
+    }
+
+    public static Frame LoadPng(string path)
+    {
+        var bytes = File.ReadAllBytes(path);
+        using var mem = new Windows.Storage.Streams.InMemoryRandomAccessStream();
+        using (var w = new Windows.Storage.Streams.DataWriter(mem.GetOutputStreamAt(0)))
+        {
+            w.WriteBytes(bytes);
+            w.StoreAsync().AsTask().GetAwaiter().GetResult();
+            w.FlushAsync().AsTask().GetAwaiter().GetResult();
+            w.DetachStream();
+        }
+        var decoder = BitmapDecoder.CreateAsync(mem).AsTask().GetAwaiter().GetResult();
+        using var bmp = decoder.GetSoftwareBitmapAsync(BitmapPixelFormat.Bgra8, BitmapAlphaMode.Premultiplied).AsTask().GetAwaiter().GetResult();
+        var buf = new byte[bmp.PixelWidth * bmp.PixelHeight * 4];
+        bmp.CopyToBuffer(buf.AsBuffer());
+        return new Frame(buf, bmp.PixelWidth, bmp.PixelHeight);
     }
 
     private static void SavePng(Frame f, string path)
