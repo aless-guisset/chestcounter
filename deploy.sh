@@ -23,7 +23,12 @@ echo Console : un mot du titre de la fenetre du jeu / a word of the game window 
 echo.
 set "WIN="
 set /p WIN=Fenetre / Window (Entree / Enter = Fortnite) : 
-if "%WIN%"=="" (start "" /wait /b ChestCounterPlus.exe --ocr-test 30) else (start "" /wait /b ChestCounterPlus.exe --ocr-test 30 "%WIN%")
+if "%WIN%"=="" set "WIN=Fortnite"
+echo.
+echo Lecture en cours (30 min) de la fenetre "%WIN%"... Ferme cette fenetre pour arreter.
+echo Reading window "%WIN%" (30 min)... Close this window to stop.
+start "" /wait /b "%~dp0ChestCounterPlus.exe" --ocr-test 30 "%WIN%"
+echo Termine (code %errorlevel%) / Done.
 start "" explorer "%APPDATA%\ChestCounterPlus\ocr"
 pause
 BAT

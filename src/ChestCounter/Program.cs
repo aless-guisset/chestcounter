@@ -115,7 +115,8 @@ if (Array.IndexOf(args, "--ps5-xp") is var xpAt and >= 0)
 if (Array.IndexOf(args, "--ocr-test") is var ocrAt and >= 0)
 {
     var minutes = ocrAt + 1 < args.Length && int.TryParse(args[ocrAt + 1], out var m) && m > 0 ? m : 30;
-    var title = ocrAt + 2 < args.Length && !args[ocrAt + 2].StartsWith("--") ? args[ocrAt + 2] : null;
+    var title = ocrAt + 2 < args.Length && !args[ocrAt + 2].StartsWith("--") ? args[ocrAt + 2].Trim() : null;
+    if (string.IsNullOrEmpty(title) || title.Equals("fortnite", StringComparison.OrdinalIgnoreCase)) title = null; // le jeu sur PC
     return ScreenOcr.Test(dataDir, minutes, title);
 }
 if (args.Contains("--ps5-quests"))

@@ -37,13 +37,14 @@ public static class ScreenOcr
         var folder = Path.Combine(dataDir, "ocr");
         Directory.CreateDirectory(folder);
         var path = Path.Combine(folder, "ocr.txt");
+        File.WriteAllText(path, $"== démarrage {DateTime.Now:yyyy-MM-dd HH:mm:ss} ==\n");
         var engine = OcrEngine.TryCreateFromUserProfileLanguages();
         if (engine == null)
         {
-            Console.WriteLine("OCR Windows indisponible (aucune langue OCR installée).");
+            File.AppendAllText(path, "OCR Windows indisponible (aucune langue OCR installée).\n");
             return 1;
         }
-        File.WriteAllText(path, $"== lecture d'écran ({engine.RecognizerLanguage.DisplayName}) pendant {minutes} min, fenêtre « {windowTitle ?? "Fortnite"} », début {DateTime.Now:yyyy-MM-dd HH:mm:ss} ==\n");
+        File.AppendAllText(path, $"== lecture d'écran ({engine.RecognizerLanguage.DisplayName}) pendant {minutes} min, fenêtre « {windowTitle ?? "Fortnite"} », début {DateTime.Now:yyyy-MM-dd HH:mm:ss} ==\n");
         void Log(string line)
         {
             var l = $"{DateTime.Now:HH:mm:ss.f}  {line}";
