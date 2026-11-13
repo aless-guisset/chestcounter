@@ -13,18 +13,18 @@ Utilisateur francophone : UI, messages et commentaires du code ajouté en franç
 
 ## Build et installation (depuis WSL)
 
-`./package.sh` fabrique `Bureau\ChestCounterPlus\ChestCounterPlus.zip` à partager (exe + .bat + `packaging/LISEZMOI.txt`).
+`./package.sh` fabrique la version publique, le dossier `Bureau\ChestCounterPlus` (exe, lancement, désinstalleur LED-N, LISEZMOI ; pas de zip : le partage de l'utilisateur les refuse).
 `./deploy.sh` fait tout (compile, ferme l'app si elle tourne, copie l'exe). À la main :
 
 ```
 ~/.dotnet/dotnet publish src/ChestCounter/ChestCounter.csproj -c Release -r win-x64 --self-contained true \
   -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true \
   -p:DebugType=none -o dist
-cp dist/ChestCounterPlus.exe /mnt/c/Users/adm_loc/Desktop/ChestCounterPlus/
+cp dist/ChestCounterPlus.exe /mnt/c/Users/adm_loc/Desktop/ChestCounterPlus-Prive/
 ```
 
 SDK .NET 10 dans `~/.dotnet` (Windows n'a que le SDK 8).
-Dossier Windows unique `Bureau\ChestCounterPlus` (lancé avec Fortnite) : exe, zip à partager, `Lancer ChestCounter+.bat`, `Test XP (40 min).bat`, `Test lecture ecran (30 min).bat`
+Dossier privé `Bureau\ChestCounterPlus-Prive` (le sien, lancé avec Fortnite, rempli par `./deploy.sh`) : exe, `Lancer ChestCounter+.bat`, `Test XP (40 min).bat`, `Test lecture ecran (30 min).bat`
 (résultat copié dans `Tests\`), `Mes donnees.bat`, `LISEZMOI.txt`.
 Données réelles : `%APPDATA%\ChestCounterPlus` (mode console dans `ps5\` : auth.json, data.json, report.html, overlay).
 

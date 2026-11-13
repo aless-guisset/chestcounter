@@ -12,7 +12,6 @@ Contenu du dossier
   ChestCounterPlus.exe                  le compteur (rien à installer)
   Lancer ChestCounter+.bat              ouvre le compteur
   Desinstaller ChestCounter LED-N.bat   retire l'ancien ChestCounter de LED-N
-  Test lecture ecran (30 min).bat       test optionnel (voir plus bas)
   LISEZMOI.txt                          ce fichier
 
 
@@ -55,8 +54,8 @@ Méthode manuelle (si tu préfères)
 ÉTAPE 2 — Installer ChestCounter+
 =========================================================
 
-  1. Dézippe le dossier à un endroit fixe, par exemple C:\ChestCounterPlus.
-     Évite Téléchargements (souvent nettoyé) et ne lance pas l'exe depuis le zip.
+  1. Mets le dossier ChestCounterPlus à un endroit fixe, par exemple C:\ChestCounterPlus
+     ou sur le Bureau. Évite Téléchargements (souvent nettoyé).
   2. Double-clique "Lancer ChestCounter+.bat".
   3. Windows peut afficher "Windows a protégé votre ordinateur" (l'exe n'est pas
      signé) : clique "Informations complémentaires" puis "Exécuter quand même".
@@ -169,14 +168,6 @@ Désinstaller ChestCounter+ (plus tard)
   4. Optionnel : supprime %APPDATA%\ChestCounterPlus (historique, réglages,
      connexion Epic).
 
-
-Test lecture d'écran (optionnel)
---------------------------------
-"Test lecture ecran (30 min).bat" lit l'écran toutes les secondes et note le texte
-qui s'affiche quand tu ouvres un coffre (+XP), pour préparer le comptage en direct.
-  - PC : Entrée, puis joue en "Plein écran fenêtré".
-  - Console : tape un mot du titre de la fenêtre qui montre ton jeu (OBS, Twitch…).
-Le résultat (ocr.txt et quelques captures) est dans %APPDATA%\ChestCounterPlus\ocr.
 
 Tes données : %APPDATA%\ChestCounterPlus — ne partage pas ce dossier,
 il contient ta connexion Epic.
