@@ -24,6 +24,11 @@
     <!-- What's new of this version: shown once after an update, and used as the GitHub release text (build.yml). -->
     <!-- Cotes et trésors de la saison (copie fixe de LED-N 1.5.0, MIT) : voir TreasureOdds.cs. -->
     <EmbeddedResource Include="Assets\treasures.json" LogicalName="treasures.json" />
+    <!-- Page du téléphone (servie par PhoneServer sur le réseau local). -->
+    <EmbeddedResource Include="Assets\phone.html" LogicalName="phone.html" />
     <EmbeddedResource Include="..\..\RELEASE_NOTES.md" LogicalName="ReleaseNotes.md" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="QRCoder" Version="1.6.0" />
   </ItemGroup>
 </Project>

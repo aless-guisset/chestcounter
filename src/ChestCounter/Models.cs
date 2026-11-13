@@ -112,6 +112,11 @@ public sealed class Config
 
     /// <summary>La barre déroulante a été mise par défaut une fois (après, le choix du joueur est respecté).</summary>
     public bool BarIntroduced { get; set; }
+
+    /// <summary>Page du téléphone (réseau local) : allumée depuis le menu « Téléphone ».</summary>
+    public bool PhoneEnabled { get; set; }
+    public string? PhoneToken { get; set; }
+    public int PhonePort { get; set; } = 8723;
     public int? OverlayX { get; set; }
     public int? OverlayY { get; set; }
     /// <summary>Locked overlay = click-through, cannot be moved (Ctrl+Shift+L to toggle).</summary>

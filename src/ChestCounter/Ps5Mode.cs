@@ -75,6 +75,10 @@ public static class Ps5Mode
         public Calibration? Calib { get; set; }
         public bool CalibAsked { get; set; }
         public Dictionary<string, int> MatchesPerUtcDay { get; set; } = new();
+        /// <summary>Parties vues par le compteur (fin détectée par l'XP), avec les coffres donnés par le joueur.</summary>
+        public List<PlayedMatch> Played { get; set; } = new();
+        /// <summary>Appuis « +1 coffre » de la partie en cours (téléphone), rattachés à la prochaine fin de partie.</summary>
+        public int Taps { get; set; }
     }
 
     public sealed class Calibration
@@ -457,6 +461,11 @@ public static class Ps5Mode
     private static DateTime? _lastSync;
     private static string? _error;
     private static DateTime _nextPoll = DateTime.MinValue;
+    /// <summary>XP du dernier relevé de CE lancement (pas sauvé : une partie jouée compteur fermé n'est pas une fin de partie vue).</summary>
+    private static string? _xpKey;
+    private static readonly DateTime StartedUtc = DateTime.UtcNow;
+    /// <summary>Actions venues du téléphone, appliquées par la boucle principale entre deux relevés.</summary>
+    private static readonly System.Collections.Concurrent.ConcurrentQueue<Action> Commands = new();
 
     /// <summary>--ps5-quests : écrit les attributs bruts des quêtes Chasse au trésor (dates de palier) dans ps5\\quests.txt.</summary>
     public static int DumpQuests(string dataDir)
@@ -626,6 +635,16 @@ public static class Ps5Mode
     public static bool Tick(bool openReportOnFirstSync)
     {
         if (!HasAuth) return false;
+        if (_polling == null && !Commands.IsEmpty)
+        {
+            while (Commands.TryDequeue(out var cmd))
+            {
+                try { cmd(); } catch (Exception e) { ErrorLog.Write("PS5 commande", e); }
+            }
+            Save(DataPath, _data);
+            UpdateOverlay();
+            return true;
+        }
         if (_polling == null && DateTime.Now >= _nextPoll)
         {
             _polling = Task.Run(Poll);
@@ -1060,6 +1079,18 @@ public static class Ps5Mode
                 AppendCsv(g);
                 Add($"+{g.Delta} " + L.Count(g.Delta, "coffre", "chest", "cofre") + $"  →  {g.Total}", ConsoleColor.Green);
             }
+            // Fin de partie : l'XP du profil ne change qu'à la sortie d'une partie (rien pendant).
+            var xpKey = ConsoleMatches.XpKey(profile);
+            if (ConsoleMatches.Ended(_xpKey, xpKey))
+            {
+                int? epicDelta = prev < Cap && c.Value <= Cap ? c.Value - prev : null; // sous le plafond : chiffre exact
+                var m = ConsoleMatches.AddEnded(_data.Played, DateTime.UtcNow, _data.Taps, epicDelta);
+                _data.Taps = 0;
+                Add(L.T($"Partie finie à {m.EndedUtc.ToLocalTime():HH:mm}", $"Match ended at {m.EndedUtc.ToLocalTime():HH:mm}", $"Partida terminada a las {m.EndedUtc.ToLocalTime():HH:mm}")
+                    + (m.Chests is int ec ? $" : {L.Count(ec, "coffre", "chest", "cofre")}" : m.Taps > 0 ? $" : {L.Count(m.Taps, "coffre", "chest", "cofre")} ({L.T("téléphone", "phone", "teléfono")})"
+                    : L.T(" : combien de coffres ? (téléphone ou menu « Dernière partie »)", ": how many chests? (phone or \"Last match\" menu)", ": ¿cuántos cofres? (teléfono o menú «Última partida»)")), ConsoleColor.Cyan);
+            }
+            if (xpKey != null) _xpKey = xpKey;
             _data.Last = c.Value;
             _tracked = c;
             var season = BuildSeason(profile);
@@ -1112,10 +1143,32 @@ public static class Ps5Mode
         var today = DateTime.Now.Date;
         var todayExact = _season.PerDayExact.GetValueOrDefault(today);
         var todayEst = _season.PerDayEstimated.GetValueOrDefault(today);
-        int? shownTotal = Capped && _season.PaceEstimate is int est ? est : total;
+        var avg = AverageChests();
+        int? shownTotal = Capped && _season.PaceEstimate is int est ? est + (int)Math.Round(PlayedCorrection(avg)) : total;
         int? todayValue = Capped && TodayPending && todayExact < 0.5 ? null : (int)Math.Round(todayExact + todayEst);
+        var todayIsEst = todayEst >= 0.5;
         var sessionKnown = !Capped && _tracked != null && _sessionStart != null;
         var session = sessionKnown ? _tracked!.Value - _sessionStart!.Value : 0;
+        var sessionEst = false;
+        if (Capped)
+        {
+            // Au-delà du plafond : session et journée = parties vues par le compteur (réponses, appuis, sinon moyenne).
+            (session, sessionEst) = ConsoleMatches.Sum(_data.Played.Where(m => m.EndedUtc >= StartedUtc), avg);
+            sessionKnown = true;
+            var todayPlayed = _data.Played.Where(m => m.EndedUtc.ToLocalTime().Date == today).ToList();
+            if (TodayPending && todayPlayed.Count > 0)
+            {
+                var (tv, te) = ConsoleMatches.Sum(todayPlayed, avg);
+                (todayValue, todayIsEst) = (tv, te);
+            }
+        }
+        var last = _data.Played.LastOrDefault();
+        ConsolePlay? play = null;
+        if (last != null || _data.Taps > 0)
+        {
+            var (lv, le) = last != null ? ConsoleMatches.Value(last, avg) : (0, false);
+            play = new ConsolePlay(last != null ? lv : null, le, last?.EndedUtc, last != null && NeedsAnswer(last), _data.Taps, sessionEst);
+        }
 
         var weekStartLocal = TreasureOdds.CurrentWeek(DateTime.UtcNow).StartUtc.ToLocalTime().Date;
         double weekExact = _season.PerDayExact.Where(kv => kv.Key >= weekStartLocal).Sum(kv => kv.Value);
@@ -1123,14 +1176,97 @@ public static class Ps5Mode
         var weekChests = (int)Math.Round(weekExact + weekEst);
         var seasonChests = shownTotal ?? 0;
 
-        return BarModel.ForPs5(shownTotal, Capped, todayValue, todayEst >= 0.5, session, sessionKnown,
-            weekChests, Capped || weekEst >= 0.5, seasonChests, new ObtainedStore(_folder), DateTime.UtcNow);
+        return BarModel.ForPs5(shownTotal, Capped, todayValue, todayIsEst, session, sessionKnown,
+            weekChests, Capped || weekEst >= 0.5, seasonChests, new ObtainedStore(_folder), DateTime.UtcNow, play);
+    }
+
+    // ---- Parties vues (fin de partie, réponses du joueur) ----------------------------------------------------------
+
+    /// <summary>Moyenne de coffres par partie : réponses du joueur (3 et plus), sinon étalonnage, sinon rythme mesuré.</summary>
+    private static double? AverageChests() =>
+        ConsoleMatches.Average(_data.Played, _data.Calib?.PerMatch ?? (_season.PaceRatio > 0 ? _season.PaceRatio : null));
+
+    /// <summary>Correction du total estimé par les parties vues (après l'étalonnage s'il y en a un).</summary>
+    private static double PlayedCorrection(double? avg)
+    {
+        if (_season.PaceRatio <= 0) return 0;
+        var since = _data.Calib?.At ?? DateTime.MinValue;
+        return ConsoleMatches.TotalCorrection(_data.Played.Where(m => m.EndedUtc > since), _season.PaceRatio, avg,
+            utc => _data.MatchesPerUtcDay.ContainsKey(utc.Date.ToString("yyyy-MM-dd")));
+    }
+
+    /// <summary>Au-delà du plafond, une partie récente sans réponse ni appui attend le nombre de coffres.</summary>
+    private static bool NeedsAnswer(PlayedMatch m) => Capped && m.Chests == null && m.Taps == 0 && DateTime.UtcNow - m.EndedUtc < TimeSpan.FromHours(3);
+
+    public static IReadOnlyList<PlayedMatch> Played => _data.Played;
+    public static int CurrentTaps => _data.Taps;
+    public static double? Average => AverageChests();
+    public static bool IsCapped => Capped;
+
+    /// <summary>+1 / −1 coffre pour la partie en cours (téléphone). Thread quelconque : appliqué par la boucle.</summary>
+    public static void Tap(int delta) => Commands.Enqueue(() => _data.Taps = Math.Max(0, _data.Taps + delta));
+
+    /// <summary>Nombre de coffres d'une partie vue (null = effacer la réponse). Thread quelconque : appliqué par la boucle.</summary>
+    public static void Answer(string id, int? chests) => Commands.Enqueue(() =>
+    {
+        if (_data.Played.FirstOrDefault(m => m.Id == id) is not { } m) return;
+        m.Chests = chests is int n ? Math.Clamp(n, 0, 200) : null;
+        m.Source = chests == null ? null : "answer";
+    });
+
+    /// <summary>Supprime une partie vue (fausse fin de partie : XP gagnée hors partie). Thread quelconque.</summary>
+    public static void Forget(string id) => Commands.Enqueue(() => _data.Played.RemoveAll(m => m.Id == id));
+
+    /// <summary>Écran console : combien de coffres dans la dernière partie ?</summary>
+    public static void AnswerLastScreen()
+    {
+        if (Busy || _data.Played.LastOrDefault() is not { } last) return;
+        Frames.Invalidate();
+        ConsoleUi.Screen(L.T("Dernière partie", "Last match", "Última partida"), "PS5");
+        var (v, est) = ConsoleMatches.Value(last, AverageChests());
+        ConsoleUi.Text(L.T($"Partie finie à {last.EndedUtc.ToLocalTime():HH:mm} : combien de coffres as-tu ouverts ?", $"Match ended at {last.EndedUtc.ToLocalTime():HH:mm}: how many chests did you open?", $"Partida terminada a las {last.EndedUtc.ToLocalTime():HH:mm}: ¿cuántos cofres abriste?"), ConsoleColor.White);
+        ConsoleUi.Hint(L.T($"Actuellement : {(est ? "≈ " : "")}{v}. Entrée sans rien : ne change rien.", $"Now: {(est ? "≈ " : "")}{v}. Enter with nothing: no change.", $"Ahora: {(est ? "≈ " : "")}{v}. Intro vacío: sin cambios."));
+        ConsoleUi.Blank();
+        if (ParseNumber(ConsoleUi.Input(L.T("Coffres : ", "Chests: ", "Cofres: "))) is double n)
+        {
+            last.Chests = (int)Math.Round(n);
+            last.Source = "answer";
+            Save(DataPath, _data);
+            UpdateOverlay();
+        }
+        Frames.Invalidate();
     }
 
     // ---- Overlay (fenêtre de ChestCounter, alimentée par le compte Epic) ---------------------------------------
 
+    /// <summary>Actions du téléphone (mode console).</summary>
+    public sealed class PhoneActions : IPhoneActions
+    {
+        public void Tap(int delta) => Ps5Mode.Tap(delta);
+        public void Answer(string id, int? chests) => Ps5Mode.Answer(id, chests);
+        public void Forget(string id) => Ps5Mode.Forget(id);
+    }
+
+    /// <summary>Partie console de la page du téléphone : appuis en cours et dernières parties (plus récente en haut).</summary>
+    private static object PhoneConsole()
+    {
+        var avg = AverageChests();
+        return new
+        {
+            capped = Capped,
+            taps = _data.Taps,
+            matches = _data.Played.AsEnumerable().Reverse().Take(15).Select(m =>
+            {
+                var (v, est) = ConsoleMatches.Value(m, avg);
+                var local = m.EndedUtc.ToLocalTime();
+                return new { id = m.Id, ended = local.ToString(local.Date == DateTime.Now.Date ? "HH:mm" : "dd'/'MM HH:mm"), value = v, estimated = est, taps = m.Taps, needs = NeedsAnswer(m) };
+            }),
+        };
+    }
+
     public static void UpdateOverlay()
     {
+        if (PhoneServer.IsRunning && HasAuth) PhoneServer.Publish(Bar(), PhoneConsole());
         if (!OperatingSystem.IsWindows() || !NativeOverlay.IsRunning) return;
         var total = _tracked?.Value;
         var today = DateTime.Now.Date;

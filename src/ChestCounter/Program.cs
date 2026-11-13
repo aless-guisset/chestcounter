@@ -458,6 +458,23 @@ if (config.IsConsole)
     StartConsoleEngine();
 }
 
+// Page du téléphone (réseau local) : démarrée au lancement si elle a été allumée une fois.
+bool StartPhone()
+{
+    if (string.IsNullOrEmpty(config.PhoneToken))
+    {
+        config.PhoneToken = PhoneServer.NewToken();
+        try { store.SaveConfig(config); } catch { }
+    }
+    var ok = PhoneServer.Start(config.PhonePort, config.PhoneToken, new Ps5Mode.PhoneActions());
+    if (ok) UpdateOverlay(store, config, data, tracker.LiveMatch, tracker.IsLive);
+    return ok;
+}
+if (config.PhoneEnabled && interactive)
+{
+    StartPhone();
+}
+
 // ---- Main screen ---------------------------------------------------------------------------
 // One screen, redrawn in place: tabs (home / settings / help), a menu driven by the arrow keys, and an activity
 // area that shows what the counter prints (captured from Console.Out).
@@ -787,6 +804,36 @@ List<(string Label, Action Run, string? About)> Items()
                         "Once: your number of matches this season (Career in Fortnite) and your chests if you know them. The estimate beyond 1,000 uses them.",
                         "Una vez: tus partidas de la temporada (Trayectoria en Fortnite) y tus cofres si los sabes. La estimación más allá de 1000 los usa.")));
             }
+            if (config.IsConsole && Ps5Mode.HasAuth && Ps5Mode.Played.Count > 0)
+            {
+                list.Add(Item(L.T("Dernière partie : combien de coffres ?", "Last match: how many chests?", "Última partida: ¿cuántos cofres?"), () => SubScreen(Ps5Mode.AnswerLastScreen),
+                    L.T("Au-delà de 1 000, Epic ne compte plus : ton chiffre remplace l'estimation (aussi possible depuis le téléphone).",
+                        "Beyond 1,000 Epic stops counting: your number replaces the estimate (also possible from the phone).",
+                        "Más allá de 1000 Epic deja de contar: tu cifra sustituye a la estimación (también desde el teléfono).")));
+            }
+            list.Add(Item(L.T("Téléphone (QR code)", "Phone (QR code)", "Teléfono (código QR)"), () =>
+            {
+                if (!PhoneServer.IsRunning && !StartPhone())
+                {
+                    Console.WriteLine(L.T($"  Impossible d'ouvrir le port {config.PhonePort} (déjà utilisé ?).", $"  Cannot open port {config.PhonePort} (already in use?).", $"  No se puede abrir el puerto {config.PhonePort} (¿ya en uso?)."));
+                    return;
+                }
+                if (!config.PhoneEnabled)
+                {
+                    config.PhoneEnabled = true;
+                    try { store.SaveConfig(config); } catch { }
+                }
+                if (PhoneServer.Url is not { } url)
+                {
+                    Console.WriteLine(L.T("  Pas de réseau local trouvé : connecte le PC au Wi-Fi ou au câble.", "  No local network found: connect the PC to Wi-Fi or a cable.", "  No se encontró red local: conecta el PC al Wi-Fi o al cable."));
+                    return;
+                }
+                var qr = Path.Combine(store.Folder, "telephone.html");
+                PhoneServer.WriteQrPage(qr, url);
+                Open(qr);
+            }, L.T("Affiche un QR code : scanne-le avec ton téléphone (même Wi-Fi) pour voir la barre, compter « +1 coffre » en partie et répondre en fin de partie. Si Windows demande, autorise les réseaux privés.",
+                "Shows a QR code: scan it with your phone (same Wi-Fi) to see the bar, count \"+1 chest\" in a match and answer at the end of a match. If Windows asks, allow private networks.",
+                "Muestra un código QR: escanéalo con tu teléfono (misma Wi-Fi) para ver la barra, contar «+1 cofre» en partida y responder al final. Si Windows pregunta, permite las redes privadas.")));
             list.Add(Item(L.T("Trésors obtenus (cocher)", "Treasures obtained (tick)", "Tesoros conseguidos (marcar)"), () =>
             {
                 SubScreen(() => TreasureChecklist.Run(config.IsConsole ? Ps5Mode.Folder : store.Folder, appName));
@@ -1517,11 +1564,15 @@ static void UpdateOverlay(Store store, Config config, TrackerData d, MatchRecord
     var shown = Profiles.View(d, config);
     var view = OverlayModel.Build(shown, live, inProgress);
     ReportWriter.WriteOverlay(store, view);
-    if (OperatingSystem.IsWindows() && NativeOverlay.IsRunning)
+    var overlay = OperatingSystem.IsWindows() && NativeOverlay.IsRunning;
+    if (!overlay && !PhoneServer.IsRunning) return;
+    var bar = PcBar(store, config, shown, live, inProgress);
+    if (overlay)
     {
         NativeOverlay.Update(view);
-        NativeOverlay.Update(PcBar(store, config, shown, live, inProgress));
+        NativeOverlay.Update(bar);
     }
+    PhoneServer.Publish(bar);
 }
 
 // Barre des coffres (PC) : session = depuis le lancement de Fortnite ; les trésors vus dans les replays sont cochés.
