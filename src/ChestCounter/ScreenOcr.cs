@@ -78,6 +78,11 @@ public static class ScreenOcr
                 }
                 if (Capture(hwnd) is { } frame)
                 {
+                    if (!_firstSaved)
+                    {
+                        _firstSaved = true; // pour vérifier que c'est bien l'image du jeu qui est lue
+                        SavePng(frame, Path.Combine(folder, "premiere-image.png"));
+                    }
                     var lines = Recognize(engine, frame).Where(l => Interesting.IsMatch(l.Text)).ToList();
                     var fresh = lines.Where(l => !recent.TryGetValue(l.Text, out var seen) || DateTime.UtcNow - seen > TimeSpan.FromSeconds(4)).ToList();
                     foreach (var l in lines) recent[l.Text] = DateTime.UtcNow;
@@ -105,6 +110,7 @@ public static class ScreenOcr
     }
 
     private static IntPtr _lastWindow;
+    private static bool _firstSaved;
 
     public sealed record Frame(byte[] Bgra, int Width, int Height);
 
