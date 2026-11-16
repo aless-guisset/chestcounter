@@ -22,6 +22,7 @@ public static class TreasureChecklist
             ConsoleUi.Hint(L.T("Ce qui est coché n'apparaît plus dans l'onglet Coffres de la barre. Sur PC, un trésor trouvé dans un replay est coché tout seul.",
                 "Ticked treasures no longer show in the bar's Chests tab. On PC, a treasure found in a replay is ticked by itself.",
                 "Lo marcado ya no aparece en la pestaña Cofres de la barra. En PC, un tesoro encontrado en una repetición se marca solo."));
+            ConsoleUi.Hint(L.T($"Images et détails : {TreasureOdds.SiteUrl}", $"Pictures and details: {TreasureOdds.SiteUrl}", $"Imágenes y detalles: {TreasureOdds.SiteUrl}"));
             ConsoleUi.Blank();
             var kinds = TreasureOdds.Kinds;
             var options = kinds.Select(k =>

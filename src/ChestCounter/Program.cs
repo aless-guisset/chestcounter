@@ -100,6 +100,8 @@ for (var i = 0; i < args.Length; i++)
 dataDir ??= Store.DefaultFolder();
 var store = new Store(dataDir);
 ErrorLog.FilePath = store.ErrorLogPath;
+// Trésors de la semaine (noms et images de fortnite.bot) : la dernière copie téléchargée, en attendant la nouvelle.
+TreasureOdds.LoadCached(store.Folder);
 
 // --ps5 : mode console (PS5, Xbox, Switch). Les replays restent dans la console : on lit le compteur du compte Epic.
 if (args.Contains("--ps5-stats"))
@@ -623,7 +625,21 @@ if (auto && OperatingSystem.IsWindows() && !(config.MinimizeToTray && interactiv
     NativeConsole.Minimize(); // opened with Fortnite: the game keeps the screen
 }
 
-// New version on GitHub (checked in the background; the only network access of the tool).
+// Trésors de la semaine à jour (fortnite.bot, via le content.json de LED-N) : au démarrage puis toutes les 2 h,
+// quelques Ko. Les nouvelles semaines arrivent sans nouvelle version du compteur.
+_ = Task.Run(async () =>
+{
+    while (!Volatile.Read(ref quit))
+    {
+        if (await TreasureOdds.RefreshAsync(store.Folder))
+        {
+            wake.Set(); // rapport et barre réécrits avec les nouveaux noms
+        }
+        await Task.Delay(TimeSpan.FromHours(2));
+    }
+});
+
+// New version on GitHub (checked in the background).
 if (AppInfo.UpdatesEnabled && config.UpdateMode != "off")
 {
     _ = Task.Run(async () =>
@@ -1030,8 +1046,8 @@ List<(string Label, Action Run, string? About)> Items()
             if (AppInfo.UpdatesEnabled)
             list.Add(Item($"{L.T("Mises à jour", "Updates", "Actualizaciones")} : {updates}",
                 () => config.UpdateMode = config.UpdateMode switch { "prompt" => "auto", "auto" => "off", _ => "prompt" },
-                L.T("Vérifiées sur GitHub au démarrage (le seul accès réseau de l'outil). Proposées : les nouveautés s'affichent et tu choisis. Automatiques : installées entre deux parties.",
-                    "Checked on GitHub at startup (the only network access of the tool). Offered: what's new is shown and you choose. Automatic: installed between two matches.",
+                L.T("Vérifiées sur GitHub au démarrage (avec les trésors de la semaine, seuls accès réseau de l'outil). Proposées : les nouveautés s'affichent et tu choisis. Automatiques : installées entre deux parties.",
+                    "Checked on GitHub at startup (with the weekly treasures, the only network access of the tool). Offered: what's new is shown and you choose. Automatic: installed between two matches.",
                     "Se comprueban en GitHub al iniciar (único acceso a la red). Propuestas: se muestran las novedades y tú eliges. Automáticas: se instalan entre dos partidas.")));
             if (!config.IsConsole)
             list.Add(Item($"{L.T("Dossier des replays", "Replays folder", "Carpeta de repeticiones")} : {config.DemosFolder}", ChangeDemosFolder,

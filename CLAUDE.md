@@ -9,6 +9,8 @@ Utilisateur francophone : UI, messages et commentaires du code ajouté en franç
   dessus**. Branche de travail : `ps5`. LED-N a sorti une 1.5.0 (fenêtre WebView2, console supprimée) : pas fusionnée.
 - Une seule app : plateforme **PC** (replays, code d'origine) ou **Console** (`Ps5Mode.cs`, compte Epic), choisie au
   premier lancement, modifiable dans Réglages. `--ps5` / `--pc` la forcent.
+- Trésors de la semaine (`TreasureOdds`) : noms/images de fortnite.bot via le `content/content.json` de LED-N (raw GitHub,
+  au démarrage puis toutes les 2 h, cache `treasures.cache.json`, `revision` plus haute gagne) ; `Assets/treasures.json` en secours.
 - Mises à jour LED-N coupées (`AppInfo.UpdatesEnabled = false`) : elles remplaceraient l'exe et effaceraient le mode console.
 
 ## Build et installation (depuis WSL)

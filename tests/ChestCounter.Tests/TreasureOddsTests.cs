@@ -43,4 +43,30 @@ public class TreasureOddsTests
         Assert.Equal(1562500, TreasureOdds.Kinds.Single(k => k.Kind == "outfit").OneIn);
         Assert.False(TreasureOdds.Kinds.Single(k => k.Kind == "pirate-shop").Weekly);
     }
+
+    [Fact]
+    public void Week3_NamesFromSite()
+    {
+        var w = TreasureOdds.CurrentWeek(Utc("2026-11-16T12:00:00Z"));
+        Assert.Equal(3, w.Number);
+        Assert.Equal("Solid Gold Miku", w.Prizes.Single(p => p.Kind == "outfit").Name);
+        Assert.StartsWith("https://cdn.fortnite.bot/", w.Prizes.Single(p => p.Kind == "outfit").Image);
+    }
+
+    [Fact]
+    public void UnrevealedWeek_NoFakeName()
+    {
+        var w = TreasureOdds.CurrentWeek(Utc("2026-11-24T12:00:00Z"));
+        Assert.Equal(4, w.Number);
+        Assert.All(w.Prizes, p => Assert.Null(p.Name));
+        Assert.NotNull(TreasureOdds.FindByPrizeId("DelilahPrize:dpid_item24"));
+    }
+
+    [Fact]
+    public void GoldenChestPrize_SiteName()
+    {
+        L.Set("fr");
+        Assert.StartsWith("Solid Gold A$AP Rocky (", TreasureNames.Friendly("DelilahPrize:dpid_item1"));
+        Assert.StartsWith("No Trespassing", TreasureNames.Friendly("DelilahPrize:dpid_item3"));
+    }
 }

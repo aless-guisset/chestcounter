@@ -887,15 +887,13 @@ public static class TreasureNames
     public const string UnknownGizmoFr = "Gizmo de trésor", UnknownGizmoEn = "Treasure gizmo", UnknownGizmoEs = "Artilugio de tesoro";
     private const string OldUnknownPrefix = "Inconnu:";
 
-    /// <summary>Prize ids whose reward is known, in the chosen language (built in: nothing to fill in by hand).</summary>
-    private static string? KnownPrize(string id) => id.ToLowerInvariant() switch
-    {
-        "delilahprize:dpid_item1" => L.T("Gantelets d'A$AP Rocky en or massif (pioche) ?", "A$AP Rocky solid gold gauntlets (pickaxe) ?", "Guanteletes de oro macizo de A$AP Rocky (pico) ?"),
-        "delilahprize:dpid_item2" => L.T("Plunder in Paradise (écran de chargement)", "Plunder in Paradise (loading screen)", "Plunder in Paradise (pantalla de carga)"),
-        "delilahprize:dpid_item3" => L.T("Mercedes-AMG G 63 (véhicule) ?", "Mercedes-AMG G 63 (vehicle) ?", "Mercedes-AMG G 63 (vehículo) ?"),
-        "delilahprize:dpid_item4" => L.T("No Trespassing (piste musicale)", "No Trespassing (music track)", "No Trespassing (pista musical)"),
-        _ => null,
-    };
+    /// <summary>
+    /// Nom du trésor d'un identifiant de coffre doré, tel que fortnite.bot l'affiche (TreasureOdds, mis à jour au démarrage).
+    /// Remplace l'ancienne liste écrite à la main (fausse : dpid_item1 est la tenue, pas les gantelets).
+    /// </summary>
+    private static string? KnownPrize(string id) => TreasureOdds.FindByPrizeId(id) is { } p
+        ? (p.Name is { } n ? $"{n} ({TreasureOdds.KindLabel(p.Kind).ToLowerInvariant()})" : TreasureOdds.KindLabel(p.Kind))
+        : null;
 
     /// <summary>Display name of a prize id, or of a treasure item blueprint.</summary>
     public static string Friendly(string item)
